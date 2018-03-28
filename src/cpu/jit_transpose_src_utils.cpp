@@ -347,7 +347,7 @@ void jit_trans_iw_x4_4x_t::generate() {
         0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15, };
 
     const auto &c = *conf_;
-    const int simd_w = cpu_isa_traits<avx512_common>::vlen / typesize;
+    int simd_w = cpu_isa_traits<avx512_common>::vlen / typesize;
     const int niters = c.tr_ld / simd_w;
 
     assert(niters <= 4); /* [bwd_w:tr_src:r1] */

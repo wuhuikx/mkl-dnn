@@ -30,8 +30,12 @@ int main( int argc, char* argv[ ] )
         // Get first snapshot.
         system("where /q umdh && umdh -pn:tests.exe -f:pre_cpu.txt");
 #endif
-
-        result = RUN_ALL_TESTS();
+       // for (int i = 1; i <= 100; ++i)
+        //{
+            // printf("%d test", i);
+             result = RUN_ALL_TESTS();
+	//}
+     
     }
 
 #if _WIN32

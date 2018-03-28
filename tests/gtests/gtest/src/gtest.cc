@@ -2640,7 +2640,6 @@ void TestInfo::Run() {
   repeater->OnTestStart(*this);
 
   const TimeInMillis start = internal::GetTimeInMillis();
-
   impl->os_stack_trace_getter()->UponLeavingGTest();
 
   // Creates the test object.

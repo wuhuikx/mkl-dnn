@@ -23,6 +23,7 @@
 #include <stdint.h>
 
 #include <math.h>
+#include <sys/time.h>
 
 namespace mkldnn {
 
@@ -214,7 +215,14 @@ protected:
             std::vector<primitive> pipeline;
             pipeline.push_back(conv);
             auto s = stream(stream::kind::lazy);
+            
+            struct timeval I_start, I_end;
+            gettimeofday(&I_start, NULL);
             s.submit(pipeline).wait();
+	    gettimeofday(&I_end, NULL);
+            double I_total = (I_end.tv_sec - I_start.tv_sec) + (I_end.tv_usec - I_start.tv_usec) / 1000000.0;
+            printf("The pause used %f ms by clock()\n", I_total * 1000);
+
 
             auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
                     ref_dst_data);

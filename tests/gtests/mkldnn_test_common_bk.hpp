@@ -214,49 +214,6 @@ static void fill_data(const size_t size, data_t *data, double sparsity = 1.,
     }
 }
 
-
-/*****************************************/
-template <typename data_t>
-static inline data_t set_value_weight(size_t index, data_t mean, data_t deviation,
-        double sparsity)
-{
-    if (data_traits<data_t>::data_type == mkldnn::memory::data_type::f32) {
-        const size_t group_size = (size_t)(1. / sparsity);
-        const size_t group = index / group_size;
-        const size_t in_group = index % group_size;
-        const bool fill = in_group == ((group % 1637) % group_size);
-        return fill ? static_cast<data_t>(mean + deviation * sinf(float(index % 37)))
-            : data_t{0};
-    } else if (data_traits<data_t>::data_type == mkldnn::memory::data_type::s32
-        || data_traits<data_t>::data_type == mkldnn::memory::data_type::s16
-        || data_traits<data_t>::data_type == mkldnn::memory::data_type::s8) {
-        srand(time(0));
-        //return data_t(rand() % 21 - 10);
-        return data_t(2);
-    } else if (data_traits<data_t>::data_type == mkldnn::memory::data_type::u8) {
-       srand(time(0));
-        //return data_t(rand() % 17);
-        return data_t(5);
-    } else {
-        return data_t(0);
-    }
-}
-
-template <typename data_t>
-static void fill_data_weight(const size_t size, data_t *data, double sparsity = 1.,
-        bool init_negs = false)
-{
-#   pragma omp parallel for schedule(static)
-    for (size_t n = 0; n < size; n++) {
-         data[n] = set_value_weight<data_t>(n, data_t(1), data_t(2e-1), sparsity);
-  
-         if (init_negs && n%4 == 0U)
-             data[n] = static_cast<data_t>(-data[n]); // weird for unsigned types!
-    }
-}
-
-/*****************************************/
-
 template <typename data_t>
 static void compare_data(mkldnn::memory& ref, mkldnn::memory& dst)
 {
@@ -335,8 +292,7 @@ struct test_convolution_sizes_t {
         kh(kh), kw(kw),
         padh(padh), padw(padw),
         strh(strh), strw(strw),
-        dilh(dilh), dilw(dilw){}
- 
+        dilh(dilh), dilw(dilw) {}
     int mb;
     int ng;
     int ic, ih, iw;

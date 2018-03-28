@@ -18,6 +18,7 @@
 #define JIT_PRIMITIVE_CONF_HPP
 
 #include <stdint.h>
+#include <vector>
 
 namespace mkldnn {
 namespace impl {
@@ -89,6 +90,12 @@ struct jit_conv_conf_t {
     int src_count;
     bool expl_bcast;
     bool large_spatial;
+    /* for fusion convolution 1x1 */
+    int oc_conv11;
+    int oc_nb1_conv11;
+    // for Int8 computation time
+    //std::vector<double> compute_time;
+    //static int compute_count;
 };
 
 /*

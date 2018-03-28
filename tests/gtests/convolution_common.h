@@ -94,12 +94,24 @@
     {__VA_ARGS__} }
 
 #ifdef TEST_PARAM_ATTR
-#include "convolution_attr.h"
+//#include "convolution_attr.h"
+//printf("1");
+//#include "diluted_convolution_u8s8s32x.h"
+//#include "convolution_googlenet_v1_u8s8s32x.h"
+//#include "convolution_attr.h"
+#include "convolution_resnet_u8s8s32x.h"
 #else
-#include "convolution_simple_small.h"
+//printf("2");
+//#include "diluted_convolution.h"
+//#include "convolution_simple_small.h"
+#include "convolution_resnet_u8s8s32x.h"
 #endif
 //#include "convolution_alexnet.h"
+//#include "diluted_convolution.h"
+//#include "diluted_convolution_u8s8s32x.h"
 //#include "convolution_googlenet_v1.h"
-//#include "convolution_googlenet_v2.h"
+//#include "convolution_googlenet_v2_u8s8s32x.h"
+//#include "convolution_resnet_u8s8s32x.h"
+//#include "convolution_googlenet_v2_u8s8s32x.h"
 //#include "convolution_resnet.h"
 //#include "convolution_cifar10.h"
