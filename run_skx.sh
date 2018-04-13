@@ -19,6 +19,7 @@ cd ..
 
 #taskset -c 28-55 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32
 taskset -c 0-27 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32
+#taskset -c 0-27 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32_discrete
 
 echo "test vnni forward done"
 

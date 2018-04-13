@@ -28,8 +28,8 @@ add_definitions(-DMKLDNN_DLL -DMKLDNN_DLL_EXPORTS)
 add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS)
 #add_definitions(-DVNNI_ENABLE)
 #add_definitions(-DALIGN)
-add_definitions(-DNON_FUSE)
-#add_definitions(-DCONV11_FUSE)
+#add_definitions(-DNON_FUSE)
+add_definitions(-DCONV11_FUSE)
 
 
 set(CMAKE_CCXX_FLAGS)
