@@ -56,6 +56,81 @@ struct pool_test_params {
     mkldnn_status_t expected_status;
 };
 
+
+template <typename data_t_src, typename data_t_wei,
+          typename data_t_acc, typename data_t_dst>
+void compute_ref_conv_relu_fwd(const test_convolution_sizes_t &c,
+      const memory &src, const memory &weights, const memory &bias,
+      const memory &dst, bool w_bias, float negative_slope)
+{
+     data_t_src *src_data = (data_t_src *)src.get_data_handle();
+     data_t_wei *weights_data = (data_t_wei *)weights.get_data_handle();
+     data_t_dst *bias_data
+             = (data_t_dst *)(w_bias ? bias.get_data_handle() : nullptr);
+     data_t_dst *dst_data = (data_t_dst *)dst.get_data_handle();
+
+     const memory::desc src_d = src.get_primitive_desc().desc();
+     const memory::desc weights_d = weights.get_primitive_desc().desc();
+     const memory::desc dst_d = dst.get_primitive_desc().desc();
+
+#pragma omp parallel for collapse(5) schedule(static)
+     for (int n = 0; n < c.mb; n++) {
+         for (int g = 0; g < c.ng; g++) {
+             for (int oc = 0; oc < c.oc / c.ng; oc++) {
+                 for (int oh = 0; oh < c.oh; oh++) {
+                     for (int ow = 0; ow < c.ow; ow++) {
+                         int oidx = n * c.oc * c.oh * c.ow
+                                 + g * c.oc / c.ng * c.oh * c.ow
+                                 + oc * c.oh * c.ow + oh * c.ow + ow;
+                         dst_data[map_index(dst_d, oidx)] = bias_data ?
+                                 bias_data[map_index(
+                                         bias.get_primitive_desc().desc(),
+                                         g * c.oc / c.ng + oc)] :
+                                 data_t_dst{0};
+
+                         for (int ic = 0; ic < c.ic / c.ng; ic++) {
+                             for (int kh = 0; kh < c.kh; kh++) {
+                                 for (int kw = 0; kw < c.kw; kw++) {
+                                     int iw = ow * c.strw
+                                           - c.padw + kw * (1 + c.dilw);
+                                     int ih = oh * c.strh
+                                         - c.padh + kh * (1 + c.dilh);
+                                     if (iw < 0 || iw >= c.iw) continue;
+                                     if (ih < 0 || ih >= c.ih) continue;
+                                     int iidx = n * c.ic * c.ih * c.iw
+                                         + g * c.ic / c.ng * c.ih * c.iw
+                                         + ic * c.ih * c.iw + ih * c.iw + iw;
+                                     int widx = g * c.oc / c.ng * c.ic
+                                         / c.ng * c.kh * c.kw
+                                         + oc * c.ic / c.ng * c.kh * c.kw
+                                         + ic * c.kh * c.kw + kh * c.kw + kw;
+
+                                     dst_data[map_index(dst_d, oidx)]
+                                         += src_data[map_index(src_d, iidx)]
+                                         * weights_data[map_index(
+                                                 weights_d, widx)];
+                                }
+                             }
+                         }
+
+                         if (dst_data[map_index(dst_d, oidx)] < 0) {
+                             dst_data[map_index(dst_d, oidx)] =
+                                 static_cast<data_t_dst>( negative_slope
+                                         * dst_data[map_index(dst_d, oidx)] );
+                         }
+                     }
+                 }
+             }
+         }
+     }
+}
+
+
+
+
+
+
+
 template <typename data_t>
 void check_pool_fwd(const pool_test_params &p, const memory &src,
         const memory &dst, const memory &ws)
@@ -160,9 +235,9 @@ protected:
        
         int batch_size = 2;
         int group_num = 1;
-        int conv_ic = 32, conv_oc = 64;
-        int conv_ih = 5, conv_iw = 5;
-        int conv_oh = 3, conv_ow = 3;
+        int conv_ic = 16, conv_oc = 16;
+        int conv_ih = 4, conv_iw = 4;
+        int conv_oh = 2, conv_ow = 2;
         int kh = 3, kw = 3;
         int padh = 0, padw = 0;
         int strh = 1, strw = 1;
@@ -195,14 +270,32 @@ protected:
         auto c_dst = memory({c_dst_desc, eng});
         auto c_bias = memory({c_bias_desc, eng});
 
+        auto dst_ref = memory({c_dst_desc, eng});
 
         fill_data<data_t_src>(c_src.get_primitive_desc().get_size() / sizeof(data_t_src),
                 (data_t_src *)c_src.get_data_handle());
+        data_t_src *src_data = (data_t_src *)c_src.get_data_handle();
+        const int mb_chunk = static_cast<int>(
+            (c_src.get_primitive_desc().get_size() / sizeof(data_t_src))
+            / cd.mb );
+        for (int i = 0; i < cd.mb * mb_chunk; ++i) {
+            if ((i / mb_chunk) % 2) src_data[i] *= (data_t_src)-1.;
+        }
+
         fill_data<data_t_wei>(c_weights.get_primitive_desc().get_size() / sizeof(data_t_wei),
                 (data_t_wei *)c_weights.get_data_handle());
         fill_data<data_t_dst>(c_bias.get_primitive_desc().get_size() / sizeof(data_t_dst),
                 (data_t_dst *)c_bias.get_data_handle(), 1., true);
 
+       // data_t_src *src_ptr = (data_t_src *)c_src.get_data_handle();
+       // for (int i = 0; i < cd.ih * cd.iw * cd.ic; ++i)
+       //     std::cout << "conv_src = " << int(*(src_ptr + i)) << std::endl;
+        
+       // data_t_wei *wei_ptr = (data_t_wei *)c_weights.get_data_handle();
+       // for (int i = 0; i < cd.oc * cd.kh * cd.kw * cd.ic; ++i)
+       //     std::cout << "conv_wei = " << int(*(wei_ptr + i)) << std::endl;
+        
+       
         std::vector<int> padR_conv = {cd.padh, cd.padw};
         for (int i = 0; i < 2; ++i) {
               if ((cd.ih - ((cd.kh - 1) * (cd.dilh + 1) + 1) + cd.padh + padR_conv[0])
@@ -229,8 +322,18 @@ protected:
 
        std::vector<primitive> pipeline;
        pipeline.push_back(conv);
+       //stream(stream::kind::lazy).submit(pipeline).wait();
+
+       //compute_ref_conv_relu_fwd<data_t_src, data_t_wei, data_t_wei, data_t_dst>(
+       //        cd, c_src, c_weights, c_bias, dst_ref, true, negative_slope);
+       //compare_data<data_t_dst>(c_dst, dst_ref);
+
+       //data_t_dst *dst_ptr = (data_t_dst *)c_dst.get_data_handle();
+       //for (int i = 0; i < cd.oc * cd.oh * cd.ow; ++i)
+       //     std::cout << "conv_dst = " << int(*(dst_ptr + i)) << std::endl;
 
 
+//#ifdef pooling
 /************************ create pooling primitive ************************/       
         pool_test_params p
                 = ::testing::TestWithParam<pool_test_params>::GetParam();
@@ -240,25 +343,49 @@ protected:
                 || p.aprop_kind == prop_kind::forward_scoring);
         //auto eng = engine(p.engine_kind, 0);
         memory::data_type data_type = data_traits<data_t_dst>::data_type;
-
-        test_pool_desc_t pd = p.test_pd;
-
+/*
+struct test_pool_desc_t {
+    int mb, c;
+    int ih, iw;
+    int oh, ow;
+    int kh, kw;
+    int padt, padl;
+    int strh, strw;
+};
+*/
+   
+       test_pool_desc_t pd = p.test_pd;
+       /* test_pool_desc_t pd{
+            batch_size, conv_oc,
+            conv_oh, conv_ow,
+            conv_oh / 2, conv_ow / 2,
+            2, 2,
+            0, 0,
+            2, 2     
+        };
+*/
         auto p_src_desc
                 = create_md({ pd.mb, pd.c, pd.ih, pd.iw }, data_type, p.src_format);
         auto p_dst_desc
                 = create_md({ pd.mb, pd.c, pd.oh, pd.ow }, data_type, p.dst_format);
 
-        auto p_src = memory({p_src_desc, eng});
+        //auto p_src = memory({p_src_desc, eng});
+        auto p_src = c_dst;
         auto p_dst = memory({p_dst_desc, eng});
 
        // fill_data<data_t_dst>(p_src.get_primitive_desc().get_size()/ sizeof(data_t_dst),
        //         (data_t_dst *)p_src.get_data_handle());
 
+       // data_t_dst *data_ptr = (data_t_dst *)p_src.get_data_handle();
+       // for (int i = 0; i < cd.oh * cd.ow * cd.oc; ++i)
+       //     std::cout << "conv_result = " << *(data_ptr + i) << std::endl;
+        /*
         data_t_dst *data_ptr = (data_t_dst *)p_src.get_data_handle();
         std::cout<< "pd.ih = " << pd.ih << std::endl;
         std::cout<< "pd.iw = " << pd.iw << std::endl;
         for (int i = 0; i < pd.ih * pd.iw * pd.c; ++i)
-            *(data_ptr + i) = data_t_dst(0);
+            *(data_ptr + i) = data_t_dst(0); */
+
        /* for (int i = 0; i < pd.ih; i=i+2){
             //for (int j = 0; j < pd.iw; ++j){
                 *(data_ptr + i * pd.iw + 0) = data_t_dst(1);
@@ -319,7 +446,7 @@ protected:
             const size_t total_size = PAGE_4M * max_nthr;
             char* dummy_data = (char*) malloc(total_size);
  
-            int burning_iter = 100;
+            int burning_iter = 1;
             double sum_time = 0;
             int count_time = 0;
             for (auto i = 0; i < burning_iter; ++i) {
@@ -336,10 +463,11 @@ protected:
 
         };
 
+
        if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
             return;
-
-      // check_pool_fwd<data_t_dst>(p, p_src, p_dst, *p_workspace);
+//#endif
+       check_pool_fwd<data_t_dst>(p, p_src, p_dst, *p_workspace);
         //data_t *dst_ptr = (data_t *)p_dst.get_data_handle();
         //std::cout<<*dst_ptr<<std::endl;
     }
@@ -354,7 +482,7 @@ INSTANTIATE_TEST_CASE_P(
             pool_test_params{ prop_kind::forward_inference,
             engine::kind::cpu, algorithm::pooling_avg_include_padding,
             memory::format::nhwc, memory::format::nhwc,
-            {1, 16, 4, 4, 2, 2, 2, 2, 0, 0, 2, 2 } } //,
+            {2, 16, 2, 2, 1, 1, 2, 2, 0, 0, 2, 2 } } //,
            // pool_test_params{ prop_kind::forward_inference,
            // engine::kind::cpu, algorithm::pooling_max, memory::format::nhwc,
            // memory::format::nhwc, {1, 256, 13, 13, 6, 6, 3, 3, 0, 0, 2, 2 } }
