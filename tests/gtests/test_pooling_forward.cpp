@@ -419,7 +419,7 @@ protected:
                cd, c_src, c_weights, c_bias, dst_ref, true, negative_slope);
        compare_data<data_t_dst>(c_dst, dst_ref);
        
-       check_pool_fwd<data_t_dst>(p, p_src, p_dst, *p_workspace);
+       check_pool_fwd<data_t_dst>(p, dst_ref, p_dst, *p_workspace);
     }
 };
 
