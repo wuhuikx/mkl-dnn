@@ -125,12 +125,6 @@ void compute_ref_conv_relu_fwd(const test_convolution_sizes_t &c,
      }
 }
 
-
-
-
-
-
-
 template <typename data_t>
 void check_pool_fwd(const pool_test_params &p, const memory &src,
         const memory &dst, const memory &ws)
@@ -333,7 +327,6 @@ protected:
        //     std::cout << "conv_dst = " << int(*(dst_ptr + i)) << std::endl;
 
 
-//#ifdef pooling
 /************************ create pooling primitive ************************/       
         pool_test_params p
                 = ::testing::TestWithParam<pool_test_params>::GetParam();
@@ -341,66 +334,18 @@ protected:
         ASSERT_TRUE(p.engine_kind == engine::kind::cpu);
         ASSERT_TRUE(p.aprop_kind == prop_kind::forward_training
                 || p.aprop_kind == prop_kind::forward_scoring);
-        //auto eng = engine(p.engine_kind, 0);
         memory::data_type data_type = data_traits<data_t_dst>::data_type;
-/*
-struct test_pool_desc_t {
-    int mb, c;
-    int ih, iw;
-    int oh, ow;
-    int kh, kw;
-    int padt, padl;
-    int strh, strw;
-};
-*/
    
-       test_pool_desc_t pd = p.test_pd;
-       /* test_pool_desc_t pd{
-            batch_size, conv_oc,
-            conv_oh, conv_ow,
-            conv_oh / 2, conv_ow / 2,
-            2, 2,
-            0, 0,
-            2, 2     
-        };
-*/
-        auto p_src_desc
-                = create_md({ pd.mb, pd.c, pd.ih, pd.iw }, data_type, p.src_format);
+        test_pool_desc_t pd = p.test_pd;
+        
+       /**************** create memory ****************/
+        auto p_src_desc = c_dst_desc;
         auto p_dst_desc
                 = create_md({ pd.mb, pd.c, pd.oh, pd.ow }, data_type, p.dst_format);
 
-        //auto p_src = memory({p_src_desc, eng});
         auto p_src = c_dst;
         auto p_dst = memory({p_dst_desc, eng});
 
-       // fill_data<data_t_dst>(p_src.get_primitive_desc().get_size()/ sizeof(data_t_dst),
-       //         (data_t_dst *)p_src.get_data_handle());
-
-       // data_t_dst *data_ptr = (data_t_dst *)p_src.get_data_handle();
-       // for (int i = 0; i < cd.oh * cd.ow * cd.oc; ++i)
-       //     std::cout << "conv_result = " << *(data_ptr + i) << std::endl;
-        /*
-        data_t_dst *data_ptr = (data_t_dst *)p_src.get_data_handle();
-        std::cout<< "pd.ih = " << pd.ih << std::endl;
-        std::cout<< "pd.iw = " << pd.iw << std::endl;
-        for (int i = 0; i < pd.ih * pd.iw * pd.c; ++i)
-            *(data_ptr + i) = data_t_dst(0); */
-
-       /* for (int i = 0; i < pd.ih; i=i+2){
-            //for (int j = 0; j < pd.iw; ++j){
-                *(data_ptr + i * pd.iw + 0) = data_t_dst(1);
-                *(data_ptr + i * pd.iw + 1) = data_t_dst(0);
-                *(data_ptr + i * pd.iw + 2) = data_t_dst(1);
-                *(data_ptr + i * pd.iw + 3) = data_t_dst(0);
-            //}
-                *(data_ptr + (i+1) * pd.iw + 0) = data_t_dst(0);
-                *(data_ptr + (i+1) * pd.iw + 1) = data_t_dst(0);
-                *(data_ptr + (i+1) * pd.iw + 2) = data_t_dst(0);
-                *(data_ptr + (i+1) * pd.iw + 3) = data_t_dst(0);
-        }*/
-       /* for (int i = 0; i < pd.ih * pd.iw; ++i)
-             std::cout<< "data = " << *(data_ptr + i) << std::endl;
-         */   
 
         std::vector<int> padR = { pd.padt, pd.padl };
         for (int i = 0; i < 2; ++i) {
@@ -411,6 +356,7 @@ struct test_pool_desc_t {
         std::shared_ptr<memory> p_workspace;
 
         auto test = [&]() {
+       /********** create pooling primitive ***********/
             auto pool_desc = pooling_forward::desc(p.aprop_kind, p.aalgorithm,
                     p_src_desc, p_dst_desc,
                     {pd.strh, pd.strw}, {pd.kh, pd.kw}, {pd.padt, pd.padl},
@@ -433,7 +379,7 @@ struct test_pool_desc_t {
 
             pipeline.push_back(pool);
 
-           // stream(stream::kind::lazy).submit(pipeline).wait();
+       /**************** submit ****************/
           auto get_current_ms = []() -> double {
                 struct timeval time;
                 gettimeofday(&time, NULL);
@@ -466,12 +412,17 @@ struct test_pool_desc_t {
 
        if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
             return;
-//#endif
+
+/************************ compare result and reference ************************/       
+
+       compute_ref_conv_relu_fwd<data_t_src, data_t_wei, data_t_wei, data_t_dst>(
+               cd, c_src, c_weights, c_bias, dst_ref, true, negative_slope);
+       compare_data<data_t_dst>(c_dst, dst_ref);
+       
        check_pool_fwd<data_t_dst>(p, p_src, p_dst, *p_workspace);
-        //data_t *dst_ptr = (data_t *)p_dst.get_data_handle();
-        //std::cout<<*dst_ptr<<std::endl;
     }
 };
+
 //using pooling_test_s8 = pooling_test<int8_t>;
 using pooling_test_s32 = conv_relu_pooling_test<uint8_t, int8_t, int32_t, int32_t>;
 TEST_P(pooling_test_s32, TestsPooling)
