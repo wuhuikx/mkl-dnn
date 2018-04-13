@@ -52,7 +52,10 @@ struct mkldnn_primitive_desc_iterator: public c_compatible {
         while (++idx_ != last_idx_) {
             auto s = impl_list_[idx_](&pd_, op_desc_, &attr_, engine_,
                     hint_fwd_pd_);
-            if (s == success) break;
+            if (s == success) {
+                printf("idx = %d\n", idx_);
+                break;
+            }
         }
         return *this;
     }

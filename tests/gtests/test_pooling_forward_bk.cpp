@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2016-2018 Intel Corporation
+* Copyright 2016-2017 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,25 +16,10 @@
 
 #include "mkldnn_test_common.hpp"
 #include "gtest/gtest.h"
-#include <omp.h>
-#include <numeric>
+
 #include "mkldnn.hpp"
-#include <iostream>
-#include <sys/time.h>
 
-void clear_cache(char* p, size_t n) {
-#pragma omp parallel for 
-     for (size_t i = 0; i < n; ++i) {
-         char write = char(3*i), read = char(4*i);  // give a little cal
-         *(p+i) = read;
-         read = p[i];
-         *(p+i) = write;
-     }
-}
-
-
-//namespace mkldnn {
-using namespace mkldnn;
+namespace mkldnn {
 
 struct test_pool_desc_t {
     int mb, c;
@@ -148,98 +133,19 @@ void check_pool_fwd(const pool_test_params &p, const memory &src,
     }
 }
 
-
-template <typename data_t_src, typename data_t_wei,
-          typename data_t_acc, typename data_t_dst>
-class conv_relu_pooling_test : public ::testing::TestWithParam<pool_test_params> {
+template <typename data_t>
+class pooling_test : public ::testing::TestWithParam<pool_test_params> {
 protected:
     virtual void SetUp()
     {
-       
-/************************ create conv primitive ************************/       
-       
-        int batch_size = 2;
-        int group_num = 1;
-        int conv_ic = 32, conv_oc = 64;
-        int conv_ih = 5, conv_iw = 5;
-        int conv_oh = 3, conv_ow = 3;
-        int kh = 3, kw = 3;
-        int padh = 0, padw = 0;
-        int strh = 1, strw = 1;
-        float negative_slope = 0.0;
-        auto eng = engine(engine::cpu, 0);
-
-        test_convolution_sizes_t cd(batch_size, 
-                                    group_num,
-                                    conv_ic, conv_ih, conv_iw,
-                                    conv_oc, conv_oh, conv_ow,
-                                    kh, kw,
-                                    padh, padw,
-                                    strh, strw);
-
-       /*********** create conv memory *************/
-        memory::data_type data_type_src = data_traits<data_t_src>::data_type;
-        memory::data_type data_type_wei = data_traits<data_t_wei>::data_type;
-        memory::data_type data_type_dst = data_traits<data_t_dst>::data_type;
-
-        auto c_src_desc = create_md({cd.mb, cd.ic, cd.ih, cd.iw},
-                data_type_src, memory::format::nhwc);
-        auto c_weights_desc = create_md({cd.oc, cd.ic, cd.kh, cd.kw},
-                data_type_wei, memory::format::OIhw4i16o4i);
-        auto c_dst_desc = create_md({cd.mb, cd.oc, cd.oh, cd.ow},
-                data_type_dst, memory::format::nhwc);
-        auto c_bias_desc = create_md({cd.oc}, data_type_dst, memory::format::x);
-
-        auto c_src = memory({c_src_desc, eng});
-        auto c_weights = memory({c_weights_desc, eng});
-        auto c_dst = memory({c_dst_desc, eng});
-        auto c_bias = memory({c_bias_desc, eng});
-
-
-        fill_data<data_t_src>(c_src.get_primitive_desc().get_size() / sizeof(data_t_src),
-                (data_t_src *)c_src.get_data_handle());
-        fill_data<data_t_wei>(c_weights.get_primitive_desc().get_size() / sizeof(data_t_wei),
-                (data_t_wei *)c_weights.get_data_handle());
-        fill_data<data_t_dst>(c_bias.get_primitive_desc().get_size() / sizeof(data_t_dst),
-                (data_t_dst *)c_bias.get_data_handle(), 1., true);
-
-        std::vector<int> padR_conv = {cd.padh, cd.padw};
-        for (int i = 0; i < 2; ++i) {
-              if ((cd.ih - ((cd.kh - 1) * (cd.dilh + 1) + 1) + cd.padh + padR_conv[0])
-                  / cd.strh + 1 != cd.oh)
-                  ++padR_conv[0];
-              if ((cd.iw - ((cd.kw - 1) * (cd.dilw + 1) + 1) + cd.padw + padR_conv[1])
-                  / cd.strw + 1 != cd.ow)
-                  ++padR_conv[1];
-        }
-
-      /********** create conv primitive ***********/
-       auto conv_desc = 
-           convolution_forward::desc(prop_kind::forward_scoring, convolution_direct,
-               c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
-               {cd.strh, cd.strw}, {cd.padh, cd.padw}, padR_conv, padding_kind::zero);
-       auto conv_relu_desc = 
-           convolution_relu_forward::desc(conv_desc, negative_slope);
-
-       auto conv_primitive_desc = 
-           convolution_relu_forward::primitive_desc( conv_relu_desc, eng);
-       auto conv = convolution_relu_forward(conv_primitive_desc,
-               c_src, c_weights, c_bias, c_dst);
-
-
-       std::vector<primitive> pipeline;
-       pipeline.push_back(conv);
-
-
-/************************ create pooling primitive ************************/       
         pool_test_params p
                 = ::testing::TestWithParam<pool_test_params>::GetParam();
 
         ASSERT_TRUE(p.engine_kind == engine::kind::cpu);
         ASSERT_TRUE(p.aprop_kind == prop_kind::forward_training
                 || p.aprop_kind == prop_kind::forward_scoring);
-        //auto eng = engine(p.engine_kind, 0);
-        memory::data_type data_type = data_traits<data_t_dst>::data_type;
+        auto eng = engine(p.engine_kind, 0);
+        memory::data_type data_type = data_traits<data_t>::data_type;
 
         test_pool_desc_t pd = p.test_pd;
 
@@ -251,29 +157,8 @@ protected:
         auto p_src = memory({p_src_desc, eng});
         auto p_dst = memory({p_dst_desc, eng});
 
-       // fill_data<data_t_dst>(p_src.get_primitive_desc().get_size()/ sizeof(data_t_dst),
-       //         (data_t_dst *)p_src.get_data_handle());
-
-        data_t_dst *data_ptr = (data_t_dst *)p_src.get_data_handle();
-        std::cout<< "pd.ih = " << pd.ih << std::endl;
-        std::cout<< "pd.iw = " << pd.iw << std::endl;
-        for (int i = 0; i < pd.ih * pd.iw * pd.c; ++i)
-            *(data_ptr + i) = data_t_dst(0);
-       /* for (int i = 0; i < pd.ih; i=i+2){
-            //for (int j = 0; j < pd.iw; ++j){
-                *(data_ptr + i * pd.iw + 0) = data_t_dst(1);
-                *(data_ptr + i * pd.iw + 1) = data_t_dst(0);
-                *(data_ptr + i * pd.iw + 2) = data_t_dst(1);
-                *(data_ptr + i * pd.iw + 3) = data_t_dst(0);
-            //}
-                *(data_ptr + (i+1) * pd.iw + 0) = data_t_dst(0);
-                *(data_ptr + (i+1) * pd.iw + 1) = data_t_dst(0);
-                *(data_ptr + (i+1) * pd.iw + 2) = data_t_dst(0);
-                *(data_ptr + (i+1) * pd.iw + 3) = data_t_dst(0);
-        }*/
-       /* for (int i = 0; i < pd.ih * pd.iw; ++i)
-             std::cout<< "data = " << *(data_ptr + i) << std::endl;
-         */   
+        fill_data<data_t>(p_src.get_primitive_desc().get_size()/ sizeof(data_t),
+                (data_t *)p_src.get_data_handle());
 
         std::vector<int> padR = { pd.padt, pd.padl };
         for (int i = 0; i < 2; ++i) {
@@ -304,70 +189,19 @@ protected:
                 ? pooling_forward(pool_prim_desc, p_src, p_dst, *p_workspace)
                 : pooling_forward(pool_prim_desc, p_src, p_dst);
 
+            std::vector<primitive> pipeline;
             pipeline.push_back(pool);
 
-           // stream(stream::kind::lazy).submit(pipeline).wait();
-          auto get_current_ms = []() -> double {
-                struct timeval time;
-                gettimeofday(&time, NULL);
-                return 1e+3 * time.tv_sec + 1e-3 * time.tv_usec;
-           };
-         
-            const size_t PAGE_4M = 4 * 1024 *1024;   // skx, L3: 1.375M*n
-            int max_nthr = omp_get_max_threads();
-            std::cout <<"max threads: " << max_nthr << std::endl;
-            const size_t total_size = PAGE_4M * max_nthr;
-            char* dummy_data = (char*) malloc(total_size);
- 
-            int burning_iter = 100;
-            double sum_time = 0;
-            int count_time = 0;
-            for (auto i = 0; i < burning_iter; ++i) {
-                clear_cache(dummy_data, total_size);
-                
-                auto s1 = get_current_ms();
-                stream(stream::kind::lazy).submit(pipeline).wait();
-                auto s2 = get_current_ms();
-                sum_time += (s2 - s1);
-
-                clear_cache(dummy_data, total_size);
-            }
-            std::cout << "avg time: " << sum_time / (double) burning_iter << " ms" << std::endl;
-
+            stream(stream::kind::lazy).submit(pipeline).wait();
         };
 
-       if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+        if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
             return;
 
-      // check_pool_fwd<data_t_dst>(p, p_src, p_dst, *p_workspace);
-        //data_t *dst_ptr = (data_t *)p_dst.get_data_handle();
-        //std::cout<<*dst_ptr<<std::endl;
+        check_pool_fwd<data_t>(p, p_src, p_dst, *p_workspace);
     }
 };
-//using pooling_test_s8 = pooling_test<int8_t>;
-using pooling_test_s32 = conv_relu_pooling_test<uint8_t, int8_t, int32_t, int32_t>;
-TEST_P(pooling_test_s32, TestsPooling)
-{
-}
-INSTANTIATE_TEST_CASE_P(
-        TestPoolingAlexnetForwardS8, pooling_test_s32, ::testing::Values(
-            pool_test_params{ prop_kind::forward_inference,
-            engine::kind::cpu, algorithm::pooling_avg_include_padding,
-            memory::format::nhwc, memory::format::nhwc,
-            {1, 16, 4, 4, 2, 2, 2, 2, 0, 0, 2, 2 } } //,
-           // pool_test_params{ prop_kind::forward_inference,
-           // engine::kind::cpu, algorithm::pooling_max, memory::format::nhwc,
-           // memory::format::nhwc, {1, 256, 13, 13, 6, 6, 3, 3, 0, 0, 2, 2 } }
-            ));
-/*
-        TestPoolingForwardAvgS8, pooling_test_s8, ::testing::Values(
-            pool_test_params{ prop_kind::forward_inference,
-            engine::kind::cpu, algorithm::pooling_avg_include_padding,
-            memory::format::nhwc, memory::format::nhwc,
-            {2, 128, 4, 4, 2, 2, 3, 3, 0, 0, 1, 1 } }
-            ));
-*/
-/*
+
 using pooling_test_float = pooling_test<float>;
 using pooling_test_s8 = pooling_test<int8_t>;
 using pooling_test_u8 = pooling_test<uint8_t>;
@@ -1367,5 +1201,5 @@ INSTANTIATE_TEST_CASE_P(
             {1, 96, 300, 500, 151, 251, 3, 3, 1, 1, 2, 2} }
 
             ));
-*/
-//}
+
+}

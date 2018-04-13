@@ -438,7 +438,7 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.with_relu = with_relu;
     jcp.relu_negative_slope = relu_negative_slope;
     jcp.ur_h = 1;
-
+    
     if (!implication(with_relu, relu_negative_slope == 0.))
         return status::unimplemented;
 
