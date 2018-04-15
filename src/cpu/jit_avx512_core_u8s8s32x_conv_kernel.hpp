@@ -22,10 +22,19 @@
 
 #include "jit_generator.hpp"
 #include "jit_primitive_conf.hpp"
+//#include "cpu_pooling_pd.hpp"
+//#include "mkldnn_types.h"
+//#include <math.h>
+//#include "utils.hpp"
+//#include "mkldnn_thread.hpp"
+//#include "jit_avx512_core_i8i8_pooling.hpp"
+
 
 namespace mkldnn {
 namespace impl {
 namespace cpu {
+
+using namespace Xbyak;
 
 struct jit_avx512_core_u8s8s32x_fwd_kernel : public jit_generator {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx512_core_u8s8s32x_conv_fwd_ker_t)
@@ -80,6 +89,9 @@ private:
     reg64_t reg_channel = r15;
     reg64_t reg_tmp = rbp;
     reg64_t imm_addr64 = r15;
+#ifdef FUSE_POOLING
+    Opmask k_cmp_mask = Opmask(7);
+#endif
 
     zmm_t zmm_tmp = zmm_t(28);
     zmm_t zmm_one = zmm_t(29);

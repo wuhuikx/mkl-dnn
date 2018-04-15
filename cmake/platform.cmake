@@ -22,6 +22,7 @@ endif()
 set(platform_cmake_included true)
 
 add_definitions(-DMKLDNN_DLL -DMKLDNN_DLL_EXPORTS)
+add_definitions(-DFUSE_POOLING)
 
 # UNIT8_MAX-like macros are a part of the C99 standard and not a part of the
 # C++ standard (see C99 standard 7.18.2 and 7.18.4)

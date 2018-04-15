@@ -19,7 +19,11 @@
 #include "type_helpers.hpp"
 #include "utils.hpp"
 #include "cpu_memory.hpp"
+#include <iostream>
 
+//#include <math.h>
+//#include "mkldnn_types.h"
+//#include "cpu_pooling_pd.hpp"
 #include "jit_avx512_core_u8s8s32x_conv_kernel.hpp"
 
 #define GET_OFF(field) offsetof(jit_conv_call_s, field)
@@ -31,6 +35,7 @@ namespace cpu {
 using namespace mkldnn::impl::memory_format;
 using namespace mkldnn::impl::utils;
 using namespace Xbyak;
+using namespace mkldnn::impl::types;
 
 namespace {
 void pick_loop_order(jit_conv_conf_t &jcp)
@@ -115,6 +120,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             : nullptr;
     if (p_sum_scale && *p_sum_scale != 1.f)
         mov(reg_ptr_sum_scale, (size_t)p_sum_scale);
+    std::cout << "p_sum_scale = " << p_sum_scale << std::endl;
 
     vpxord(zmm_zero, zmm_zero, zmm_zero);
     for (int k = 0; k < jcp.nb_oc_blocking; k++) {
@@ -134,10 +140,17 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
                 vcvtdq2ps(zmm_bias, zmm_bias);
         }
         for (int j = 0; j < ur_w; j++) {
+#ifdef FUSE_POOLING
+            int aux_output_offset
+                = jcp.typesize_out * (k * jcp.oc_block
+                                        + (j-1) * jcp.oc * jcp.ngroups);
+            auto addr = EVEX_compress_addr(reg_out, aux_output_offset);
+#else
             int aux_output_offset
                 = jcp.typesize_out * (k * jcp.oc_block
                                         + j * jcp.oc * jcp.ngroups);
             auto addr = EVEX_compress_addr(reg_out, aux_output_offset);
+#endif
 
             Xmm xmm = xmm_out(j, k);
             Zmm zmm = zmm_out(j, k);
@@ -174,6 +187,27 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
                 else
                     assert(!"unimplemented");
             }
+
+#ifdef FUSE_POOLING 
+            std::cout << "================" << std::endl;
+            Zmm zmm_max;
+            if (j % 2 == 0)
+               zmm_max = zmm;
+            else{
+               vpcmpd(k_cmp_mask, zmm_max, zmm, _cmp_lt_os);
+               vpblendmd(zmm_max | k_cmp_mask, zmm_max, zmm);
+               vmovups(addr, zmm_max); 
+
+               switch (jcp.dst_dt) {
+                case data_type::f32:
+                case data_type::s32: vmovups(addr, zmm_max); break;
+                case data_type::s8: vpmovsdb(xmm, zmm_max); vmovups(addr, xmm); break;
+                case data_type::u8: vpmovusdb(xmm, zmm_max); vmovups(addr, xmm); break;
+                default: assert(!"unknown dst_dt");
+              }
+            }
+#else 
+            std::cout << "++++++++++++++++" << std::endl;
             switch (jcp.dst_dt) {
             case data_type::f32:
             case data_type::s32: vmovups(addr, zmm); break;
@@ -181,6 +215,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
             default: assert(!"unknown dst_dt");
             }
+#endif
         }
     }
     jmp(l_ret, T_NEAR);
@@ -287,10 +322,17 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
         * jcp.ic * jcp.ngroups;
     int inp_shift = jcp.typesize_in *
                         (jcp.ur_w * jcp.stride_w * jcp.ic * jcp.ngroups);
-    int out_shift = jcp.typesize_out *
-                        (jcp.ur_w * jcp.oc * jcp.ngroups);
     int acc_shift = jcp.typesize_acc *
                         (jcp.ur_w * jcp.oc_block * jcp.nb_oc_blocking);
+//#ifdef FUSE_POOLING
+    int out_shift = jcp.typesize_out *
+                        (jcp.ur_w * jcp.oc * jcp.ngroups) / 2;
+    std::cout<<"jcp.ur_w = "<<jcp.ur_w<<std::endl;
+    std::cout<<"out_shift = "<<out_shift<<std::endl;
+//#else
+//    int out_shift = jcp.typesize_out *
+//                        (jcp.ur_w * jcp.oc * jcp.ngroups);
+//#endif
 
     preamble();
 
@@ -524,6 +566,8 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.ur_w = regs / (jcp.nb_oc_blocking + 1);
     if (jcp.ow < jcp.ur_w)  jcp.ur_w = jcp.ow;
     jcp.ur_w_tail = jcp.ow % jcp.ur_w;
+
+    std::cout<< "ur_w = " << jcp.ur_w << std::endl;
 
     bool args_ok = true
         && jcp.oc % jcp.oc_block == 0

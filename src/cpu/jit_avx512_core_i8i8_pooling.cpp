@@ -277,6 +277,7 @@ void jit_avx512_core_i8i8_pool_fwd_ker_t::compute_max_step(int ur_c, int c_tail)
     {
         mov(aux_reg_src_w, aux_reg_src_h);
         xor_(ki, ki);
+#ifndef FUSE_POOLING
         L(l_kw);
         {
             for (int jj = 0; jj < ur_c; jj++) {
@@ -296,6 +297,20 @@ void jit_avx512_core_i8i8_pool_fwd_ker_t::compute_max_step(int ur_c, int c_tail)
             cmp(ki, reg_kw);
             jl(l_kw, T_NEAR);
         }
+#else
+            for (int jj = 0; jj < ur_c; jj++) {
+                load_src(jj, 0, c_tail);
+                if (jpp.src_dt == data_type::s32) {
+                    vpcmpd(k_cmp_mask, vreg_dst(jj), vreg_src(jj), _cmp_lt_os);
+                    vpblendmd(vreg_dst(jj) | k_cmp_mask, vreg_dst(jj),
+                            vreg_src(jj));
+                } else {
+                    vpcmpb(k_cmp_mask, vreg_dst(jj), vreg_src(jj), _cmp_lt_os);
+                    vpblendmb(vreg_dst(jj) | k_cmp_mask, vreg_dst(jj),
+                            vreg_src(jj));
+                }
+            }
+#endif
         add(aux_reg_src_h, iw * c * sizeof_src_dt());
         inc(kj);
         cmp(kj, reg_kh);

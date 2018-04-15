@@ -227,7 +227,7 @@ protected:
        
 /************************ create conv primitive ************************/       
        
-        int batch_size = 2;
+        int batch_size = 1;
         int group_num = 1;
         int conv_ic = 16, conv_oc = 16;
         int conv_ih = 4, conv_iw = 4;
@@ -316,7 +316,7 @@ protected:
 
        std::vector<primitive> pipeline;
        pipeline.push_back(conv);
-       //stream(stream::kind::lazy).submit(pipeline).wait();
+       stream(stream::kind::lazy).submit(pipeline).wait();
 
        //compute_ref_conv_relu_fwd<data_t_src, data_t_wei, data_t_wei, data_t_dst>(
        //        cd, c_src, c_weights, c_bias, dst_ref, true, negative_slope);
@@ -339,13 +339,28 @@ protected:
         test_pool_desc_t pd = p.test_pd;
         
        /**************** create memory ****************/
-        auto p_src_desc = c_dst_desc;
+       // auto p_src_desc = c_dst_desc;
+        auto p_src_desc
+                = create_md({ cd.mb, cd.oc, cd.oh, cd.ow/2 }, data_type, p.src_format);
         auto p_dst_desc
                 = create_md({ pd.mb, pd.c, pd.oh, pd.ow }, data_type, p.dst_format);
 
-        auto p_src = c_dst;
+       // auto p_src = c_dst;
+        auto p_src = memory({p_src_desc, eng});
         auto p_dst = memory({p_dst_desc, eng});
 
+        auto p_dst_ptr = (data_t_dst *)p_dst.get_data_handle();
+        auto p_src_ptr = (data_t_dst *)p_src.get_data_handle();
+        auto c_dst_ptr = (data_t_dst *)c_dst.get_data_handle();
+        for (size_t i = 0; i < cd.mb; ++i){
+            for (size_t j = 0; j < cd.oh; ++j)
+                for (size_t u = 0; u < cd.ow / 2; ++u)
+                    for (size_t v = 0;  v < cd.oc; ++v){
+                        int offset1 = ((i*cd.oh+j)*cd.ow/2+u)*cd.oc+v; 
+                        int offset2= ((i*cd.oh+j)*cd.ow+2*u)*cd.oc+v;
+                        *(p_src_ptr + offset1) = *(c_dst_ptr + offset2);
+                    }
+        }
 
         std::vector<int> padR = { pd.padt, pd.padl };
         for (int i = 0; i < 2; ++i) {
@@ -417,9 +432,45 @@ protected:
 
        compute_ref_conv_relu_fwd<data_t_src, data_t_wei, data_t_wei, data_t_dst>(
                cd, c_src, c_weights, c_bias, dst_ref, true, negative_slope);
-       compare_data<data_t_dst>(c_dst, dst_ref);
+     //  compare_data<data_t_dst>(c_dst, dst_ref);
        
        check_pool_fwd<data_t_dst>(p, dst_ref, p_dst, *p_workspace);
+        /*
+        for (size_t i = 0; i < cd.mb; ++i){
+            for (size_t j = 0; j < cd.oh; ++j)
+                for (size_t u = 0; u < cd.ow / 2; ++u)
+                    for (size_t v = 0;  v < cd.oc; ++v){
+                        int offset1 = ((i*cd.oh+j)*cd.ow/2+u)*cd.oc+v; 
+                        int offset2= ((i*cd.oh+j)*cd.ow+2*u+1)*cd.oc+v;
+                        std::cout<<"offset1 = "<<offset1<<std::endl; 
+                        std::cout<<"offset2 = "<<offset2<<std::endl; 
+                        *(p_src_ptr + offset1) = *(c_dst_ptr + offset2);
+                        std::cout<<"tmp = " << *(c_dst_ptr + offset2) << std::endl;
+                    }
+        }*/
+        auto dst_ref_ptr = (data_t_dst *)dst_ref.get_data_handle();
+        for (size_t i = 0; i < cd.mb * cd.oc *cd.oh *cd.ow; ++i){
+            std::cout << "conv_dst = " << *(c_dst_ptr + i) << std::endl;
+            if ((i + 1) % 16 == 0)
+                printf("\n");
+        }
+        for (size_t i = 0; i < cd.mb * cd.oc * cd.oh * cd.ow; ++i){
+            std::cout<< "conv_ref = " << *(dst_ref_ptr + i) << std::endl;
+            if ((i + 1) % 16 == 0)
+                printf("\n");
+        }
+        for (size_t i = 0; i < cd.mb * cd.oc *cd.oh *cd.ow / 2; ++i){
+            std::cout << "pooling_src = " << *(p_src_ptr + i) << std::endl;
+            if ((i + 1) % 16 == 0)
+                printf("\n");
+        }
+
+        for (size_t i = 0; i < pd.mb*pd.c*pd.oh*pd.ow; ++i){
+            std::cout << "pooling_dst = " << *(p_dst_ptr + i) << std::endl;
+            if ((i + 1) % 16 == 0)
+                printf("\n");
+        }
+
     }
 };
 
@@ -431,9 +482,9 @@ TEST_P(pooling_test_s32, TestsPooling)
 INSTANTIATE_TEST_CASE_P(
         TestPoolingAlexnetForwardS8, pooling_test_s32, ::testing::Values(
             pool_test_params{ prop_kind::forward_inference,
-            engine::kind::cpu, algorithm::pooling_avg_include_padding,
+            engine::kind::cpu, algorithm::pooling_max,
             memory::format::nhwc, memory::format::nhwc,
-            {2, 16, 2, 2, 1, 1, 2, 2, 0, 0, 2, 2 } } //,
+            {1, 16, 2, 2, 1, 1, 2, 2, 0, 0, 2, 2 } } //,
            // pool_test_params{ prop_kind::forward_inference,
            // engine::kind::cpu, algorithm::pooling_max, memory::format::nhwc,
            // memory::format::nhwc, {1, 256, 13, 13, 6, 6, 3, 3, 0, 0, 2, 2 } }
