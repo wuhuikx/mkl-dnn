@@ -21,6 +21,7 @@
 #include "cpu_memory.hpp"
 
 #include "jit_avx512_core_u8s8s32x_conv_kernel.hpp"
+#include <iostream>
 
 #define GET_OFF(field) offsetof(jit_conv_call_s, field)
 
@@ -116,6 +117,13 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
     if (p_sum_scale && *p_sum_scale != 1.f)
         mov(reg_ptr_sum_scale, (size_t)p_sum_scale);
 
+//#ifdef L2Norm
+    Zmm zmm_qusum = zmm_t(27); //zmm_inp(1, 1);
+    vpxord(zmm_qusum, zmm_qusum, zmm_qusum);
+//#endif
+    std::cout <<"nb_oc_blocking = " << jcp.nb_oc_blocking << std::endl;
+    std::cout <<"ur_w = " << ur_w << std::endl;
+
     vpxord(zmm_zero, zmm_zero, zmm_zero);
     for (int k = 0; k < jcp.nb_oc_blocking; k++) {
         int scale_offset = jcp.is_oc_scale * (sizeof(float) * k * jcp.oc_block);
@@ -138,6 +146,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
                 = jcp.typesize_out * (k * jcp.oc_block
                                         + j * jcp.oc * jcp.ngroups);
             auto addr = EVEX_compress_addr(reg_out, aux_output_offset);
+            //auto addr_ = EVEX_compress_addr(reg_out_, aux_output_offset);
 
             Xmm xmm = xmm_out(j, k);
             Zmm zmm = zmm_out(j, k);
@@ -166,6 +175,13 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             if (maybe_relu(1))
                 vmaxps(zmm, zmm_zero, zmm);
 
+//#ifdef L2Norm
+            //vpxord(zmm_qusum, zmm_qusum, zmm_qusum);
+            std::cout << " ---------This is fma" << std::endl;
+            vfmadd231ps(zmm_qusum, zmm, zmm);
+            //vmovups(addr_, zmm_qusum); 
+//#endif
+             
             if (jcp.dst_dt != data_type::f32) {
                 if (attr_.round_mode_ == round_mode::nearest)
                     vcvtps2dq(zmm | T_rn_sae, zmm);
@@ -180,9 +196,27 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             case data_type::s8: vpmovsdb(xmm, zmm); vmovups(addr, xmm); break;
             case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
             default: assert(!"unknown dst_dt");
+
             }
         }
     }
+       //     int aux_output_offset
+       //         = jcp.typesize_out * (k * jcp.oc_block
+       //                                 + j * jcp.oc * jcp.ngroups);
+    //vmovups(addr_, zmm_qusum);
+    //std::cout<< "jcp.ngroups = " << jcp.ngroups << std::endl;
+    
+    if (jcp.dst_dt != data_type::f32) {
+                if (attr_.round_mode_ == round_mode::nearest)
+                    vcvtps2dq(zmm_qusum | T_rn_sae, zmm_qusum);
+                else if (attr_.round_mode_ == round_mode::down)
+                    vcvtps2dq(zmm_qusum | T_rd_sae, zmm_qusum);
+                else
+                    assert(!"unimplemented");
+            }
+    auto addr_ = EVEX_compress_addr(reg_out_, 0);
+    vmovups(addr_, zmm_qusum); 
+
     jmp(l_ret, T_NEAR);
 
     L(l_update_acc);
@@ -321,6 +355,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
 
     mov(reg_inp, ptr[param1 + GET_OFF(src)]);
     mov(reg_out, ptr[param1 + GET_OFF(dst)]);
+    mov(reg_out_, ptr[param1 + GET_OFF(dst_)]);
     mov(reg_ker, ptr[param1 + GET_OFF(filt)]);
     mov(reg_kh, ptr[param1 + GET_OFF(kh_padding)]);
     mov(reg_acc_s32, ptr[param1 + GET_OFF(acc_s32)]);
@@ -341,6 +376,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
             compute_loop(jcp.ur_w, jcp.l_pad, r_pad1);
             add(reg_inp, inp_shift_pad);
             add(reg_out, out_shift);
+            add(reg_out_, out_shift);
             add(reg_acc_s32, acc_shift);
             if (jcp.ur_w_tail != 0) {
                 compute_loop(jcp.ur_w_tail, 0, r_pad);
@@ -350,6 +386,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                 compute_loop(jcp.ur_w, jcp.l_pad, 0);
                 add(reg_inp, inp_shift_pad);
                 add(reg_out, out_shift);
+                add(reg_out_, out_shift);
                 add(reg_acc_s32, acc_shift);
 
                 inc(reg_oi);
@@ -362,6 +399,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                     compute_loop(jcp.ur_w, 0, 0);
                     add(reg_inp, inp_shift);
                     add(reg_out, out_shift);
+                    add(reg_out_, out_shift);
                     add(reg_acc_s32, acc_shift);
 
                     inc(reg_oi);
@@ -373,6 +411,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                 compute_loop(jcp.ur_w, 0, r_pad1);
                 add(reg_inp, inp_shift);
                 add(reg_out, out_shift);
+                add(reg_out_, out_shift);
                 add(reg_acc_s32, acc_shift);
             }
             if (jcp.ur_w_tail != 0) {
@@ -380,6 +419,27 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
             }
         }
     }
+
+    Zmm zmm_qusum = zmm_t(27);
+    vpxord(zmm_qusum, zmm_qusum, zmm_qusum);
+    mov(reg_out_, ptr[param1 + GET_OFF(dst_)]);
+    //int sum = 0;
+    for (int i = 0; i < std::ceil(jcp.ow * 1.0f / jcp.ur_w); ++i) {
+        //for (int u = 0; u < jcp.nb_oc_blocking; ++u) {
+        //     for (int j = 0; j < jcp.oc_block; ++j) {
+                  int oc_out_shift = jcp.typesize_out * (i * jcp.ur_w * jcp.oc);  
+                  //int oc_out_shift = jcp.typesize_out * (i * jcp.oc + u * jcp.oc_block + j);  
+                  //int oc_out_shift = (i * jcp.oc + u * jcp.oc_block + j); 
+
+                  vaddps(zmm_qusum, zmm_qusum, EVEX_compress_addr(reg_out_, oc_out_shift));
+                  //vmulps(zmm, zmm, EVEX_compress_addr(reg_ptr_scales, scale_offset));
+                  //vmovups(zmm_t(27), EVEX_compress_addr(reg_out_, oc_out_shift));
+                  //sum += *(dst_ + oc_out_shift); 
+                  //add(reg_out_, oc_out_shift);
+        //     }
+        //}
+    }
+    vmovups(EVEX_compress_addr(reg_out_, 0), zmm_qusum);
 
     postamble();
 }

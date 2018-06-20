@@ -21,6 +21,8 @@
 #include "utils.hpp"
 
 #include "jit_avx512_core_u8s8s32x_convolution.hpp"
+#include <math.h>
+#include <iostream>
 
 namespace mkldnn {
 namespace impl {
@@ -109,14 +111,15 @@ execute_forward()
             auto bias_w = bias ? bias + (bias_d.blk_off(g_oc) * bia_dt_size) : 0;
 
             auto dst_w = dst + dst_d.blk_off(n, g_oc, oh_s);
+            auto dst_w_ = dst_ + dst_d.blk_off(n, g_oc, oh_s);
             auto src_w = src + src_d.blk_off(n, g_ic, ih_s);
             auto wht_w = weights + wht_blk_off(weights_d, gb, ocb, 0);
-
             auto scales = &oscales.scales_[jcp.is_oc_scale * g_oc];
 
             for (int icc = 0; icc < ic_chunks; ++icc) {
                 auto src_c = src_w;
                 auto dst_c = dst_w;
+                auto dst_c_ = dst_w_;
                 auto ws_c = ws_l;
 
                 int icb = icc * jcp.nb_ic_blocking;
@@ -134,6 +137,7 @@ execute_forward()
 
                     p.src = src_c + i_t_overflow * dilate_h * src_h_stride;
                     p.dst = dst_c;
+                    p.dst_ = dst_c_; 
                     p.filt = wht_w + i_t_overflow * wht_h_stride;
                     p.bias = bias_w;
                     p.acc_s32 = ws_c;
@@ -145,6 +149,7 @@ execute_forward()
 
                     src_c += src_h_stride * jcp.stride_h;
                     dst_c += dst_h_stride;
+                    dst_c_ += dst_h_stride;
                     ws_c += jcp.ow * jcp.oc_block * jcp.nb_oc_blocking;
                 }
                 src_w += jcp.ic_block * jcp.nb_ic_blocking;
@@ -163,6 +168,33 @@ execute_forward()
                 assert(!"unsupported loop order");
         }
     }
+
+    double sum = 0;
+    int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
+//#pragma omp parallel for collapse(3) schedule(static)    
+    for (int i = 0; i < jcp.oh; ++i) {
+        for (int j = 0; j < oc_chunks; ++j) {
+            for (int u = 0; u < jcp.oc_block; ++u) {
+                int idx = i * jcp.ow * jcp.oc + j * jcp.nb_oc_blocking * jcp.oc_block + u;
+                sum += *(dst_ + idx); 
+            }
+        }
+    }
+    double isum = 1.0 / std::sqrt(sum);    
+//#pragma omp parallel for collapse(1) schedule(static)    
+    for (int i = 0; i < jcp.mb * jcp.oh * jcp.ow * jcp.oc; ++i) {
+         //*(dst_ + i) = reinterpret_cast<dst_type>(*(dst + i) * isum);
+         *(dst_ + i) = *(dst + i) * isum;   // TODO: data type transform
+    }
+
+    // check the sum
+    std::cout << "--------fuse qusum = " << sum << std::endl;
+    double sum_tmp = 0;
+//#pragma omp parallel for collapse(1) schedule(static)    
+    for (int i = 0; i < jcp.oh * jcp.ow * jcp.oc; ++i) {
+        sum_tmp += (*(dst + i)) * (*(dst + i));
+    }
+    std::cout << "--------origin qusum = " << sum_tmp << std::endl;
 }
 
 template struct _jit_avx512_core_u8s8s32x_convolution_fwd_t<false, data_type::u8>;

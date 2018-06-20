@@ -250,6 +250,8 @@ struct jit_conv_call_s {
     size_t ur_str_w;
     size_t ch_blocks;
     int flags;
+
+    const void *dst_;
 };
 
 struct jit_wino_transform_call_s {
