@@ -54,7 +54,7 @@ struct jit_conv_conf_t {
     int stride_d, stride_h, stride_w;
     int dilate_d, dilate_h, dilate_w;
     memory_format_t src_fmt;
-    bool with_bias, with_relu;
+    bool with_bias, with_relu, with_l2_norm;
     float relu_negative_slope;
     bool with_sum;
 
@@ -252,6 +252,7 @@ struct jit_conv_call_s {
     int flags;
 
     const void *dst_;
+    const void *dst_l2_norm;
 };
 
 struct jit_wino_transform_call_s {

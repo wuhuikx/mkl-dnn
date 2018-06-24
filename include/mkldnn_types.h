@@ -396,6 +396,7 @@ typedef enum {
     mkldnn_lrn,
     /** An batch normalization primitive. */
     mkldnn_batch_normalization,
+    mkldnn_l2_norm,
     /** An inner product primitive. */
     mkldnn_inner_product,
     /** A convolution primitive merged with ReLU. @deprecated */
@@ -617,8 +618,10 @@ typedef struct {
     mkldnn_memory_desc_t diff_bias_desc;
     /** Destination memory descriptor. */
     mkldnn_memory_desc_t dst_desc;
+    mkldnn_memory_desc_t dst_l2norm_desc;
     /** Destination gradient memory descriptor. */
     mkldnn_memory_desc_t diff_dst_desc;
+    mkldnn_memory_desc_t diff_dst_l2norm_desc;
     /** Convolution strides in each spatial dimension. */
     mkldnn_dims_t strides;
     /** Convolution dilates in each spatial dimension. */

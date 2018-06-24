@@ -48,7 +48,11 @@ execute_forward()
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
-    auto dst = reinterpret_cast<dst_data_t *>(this->memory());
+    auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
+    //////auto dst_l2_norm = reinterpret_cast<dst_data_t *>(this->memory(1));
+    //if (jcp.with_l2norm) {
+    //    auto dst_norm = reinterpret_cast<dst_data_t *>(this->memory(1));
+    //}
 
     const memory_desc_wrapper src_d(conf_.src_pd());
     const memory_desc_wrapper dst_d(conf_.dst_pd());
@@ -168,6 +172,7 @@ execute_forward()
                 assert(!"unsupported loop order");
         }
     }
+
 
     double sum = 0;
     int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;

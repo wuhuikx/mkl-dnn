@@ -64,6 +64,17 @@ status_t post_ops_t::append_sum(float scale) {
     return success;
 }
 
+status_t post_ops_t::append_l2_norm() {
+    if (len_ == capacity)
+        return out_of_memory;
+
+    entry_[len_].kind = primitive_kind::l2_norm;
+
+    len_++;
+
+    return success;
+}
+
 status_t post_ops_t::append_eltwise(float scale, alg_kind_t alg, float alpha,
         float beta) {
     using namespace mkldnn::impl::alg_kind;
@@ -269,4 +280,11 @@ status_t mkldnn_post_ops_get_params_eltwise(const post_ops_t *post_ops,
     *beta = e.beta;
 
     return success;
+}
+
+status_t mkldnn_post_ops_append_l2_norm(post_ops_t *post_ops) {
+    if (post_ops == nullptr)
+        return invalid_arguments;
+
+    return post_ops->append_l2_norm();
 }

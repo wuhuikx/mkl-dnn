@@ -84,6 +84,9 @@ struct mkldnn_post_ops: public mkldnn::impl::c_compatible {
                 mkldnn::impl::alg_kind_t alg;
                 float scale, alpha, beta;
             } eltwise;
+            struct {
+                int dummy;
+            } l2_norm;
         };
 
         bool is_relu(bool require_scale_one = true,
@@ -99,6 +102,10 @@ struct mkldnn_post_ops: public mkldnn::impl::c_compatible {
             return kind == primitive_kind::sum
                 && utils::implication(require_scale_one, sum.scale == 1.f);
         }
+        bool is_l2_norm() const {
+            using namespace mkldnn::impl;
+            return kind == primitive_kind::l2_norm;
+        }
     };
 
     mkldnn_post_ops(): len_(0) {}
@@ -106,6 +113,7 @@ struct mkldnn_post_ops: public mkldnn::impl::c_compatible {
     mkldnn::impl::status_t append_sum(float scale);
     mkldnn::impl::status_t append_eltwise(float scale,
             mkldnn::impl::alg_kind_t alg, float alpha, float beta);
+    mkldnn::impl::status_t append_l2_norm();
 
     int find(mkldnn::impl::primitive_kind_t kind, int start = 0,
             int stop = -1) const {

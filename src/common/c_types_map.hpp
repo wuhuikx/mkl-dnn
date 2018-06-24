@@ -204,6 +204,7 @@ namespace primitive_kind {
     const primitive_kind_t pooling = mkldnn_pooling;
     const primitive_kind_t lrn = mkldnn_lrn;
     const primitive_kind_t batch_normalization = mkldnn_batch_normalization;
+    const primitive_kind_t l2_norm = mkldnn_l2_norm;
     const primitive_kind_t inner_product = mkldnn_inner_product;
     const primitive_kind_t convolution_relu = mkldnn_convolution_relu;
     const primitive_kind_t rnn = mkldnn_rnn;
