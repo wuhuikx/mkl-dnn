@@ -122,7 +122,6 @@ public:
         pooling = mkldnn_pooling,
         lrn = mkldnn_lrn,
         batch_normalization = mkldnn_batch_normalization,
-        l2_norm = mkldnn_l2_norm,
         inner_product = mkldnn_inner_product,
         convolution_relu = mkldnn_convolution_relu,
         rnn = mkldnn_rnn,
@@ -403,11 +402,6 @@ struct post_ops: public handle<mkldnn_post_ops_t> {
                     &scale, &c_alg, &alpha, &beta),
                 "could not get eltwise params");
         alg = static_cast<algorithm>(c_alg);
-    }
-
-    void append_l2_norm() {
-        error::wrap_c_api(mkldnn_post_ops_append_l2_norm(get()),
-                "could not append eltwise");
     }
 };
 
@@ -1222,26 +1216,6 @@ struct convolution_forward: public primitive {
         desc(prop_kind aprop_kind, algorithm aalgorithm,
                 const memory::desc &src_desc,
                 const memory::desc &weights_desc,
-                const memory::desc &bias_desc,
-                const memory::desc &dst_desc,
-                const memory::desc &dst_l2norm_desc,
-                const memory::dims strides,
-                const memory::dims padding_l,
-                const memory::dims padding_r,
-                const padding_kind apadding_kind) {
-            memory::validate_dims(strides);
-            memory::validate_dims(padding_l);
-            memory::validate_dims(padding_r);
-            error::wrap_c_api(mkldnn_l2norm_convolution_forward_desc_init(&data,
-                        mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
-                        &src_desc.data, &weights_desc.data, &bias_desc.data,
-                        &dst_desc.data, &strides[0], &padding_l[0], &padding_r[0],
-                        mkldnn::convert_to_c(apadding_kind)),
-                    "could not create a convolution forward descriptor");
-        }
-        desc(prop_kind aprop_kind, algorithm aalgorithm,
-                const memory::desc &src_desc,
-                const memory::desc &weights_desc,
                 const memory::desc &dst_desc,
                 const memory::dims strides,
                 const memory::dims padding_l,
@@ -1380,20 +1354,6 @@ struct convolution_forward: public primitive {
         mkldnn_primitive_at_t inputs[] = { src.data, weights.data,
                     bias.data };
         const_mkldnn_primitive_t outputs[] = { dst.get() };
-        error::wrap_c_api(mkldnn_primitive_create(&result,
-                    aprimitive_desc.get(), inputs, outputs),
-                "could not create a convolution forward bias primitive");
-        reset(result);
-    }
-
-    convolution_forward(const primitive_desc &aprimitive_desc,
-            const primitive::at &src, const primitive::at &weights,
-            const primitive::at &bias, const memory &dst,
-            const memory &dst_l2norm) {
-        mkldnn_primitive_t result;
-        mkldnn_primitive_at_t inputs[] = { src.data, weights.data,
-                    bias.data };
-        const_mkldnn_primitive_t outputs[] = { dst.get(), dst_l2norm.get() };
         error::wrap_c_api(mkldnn_primitive_create(&result,
                     aprimitive_desc.get(), inputs, outputs),
                 "could not create a convolution forward bias primitive");
