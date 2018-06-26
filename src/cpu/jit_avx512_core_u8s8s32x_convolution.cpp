@@ -49,7 +49,7 @@ execute_forward()
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
-    //////auto dst_l2_norm = reinterpret_cast<dst_data_t *>(this->memory(1));
+    //auto dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
     //if (jcp.with_l2norm) {
     //    auto dst_norm = reinterpret_cast<dst_data_t *>(this->memory(1));
     //}

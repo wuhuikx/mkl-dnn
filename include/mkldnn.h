@@ -402,6 +402,8 @@ mkldnn_status_t MKLDNN_API mkldnn_post_ops_get_params_eltwise(
         const_mkldnn_post_ops_t post_ops, int index, float *scale,
         mkldnn_alg_kind_t *alg, float *alpha, float *beta);
 
+mkldnn_status_t MKLDNN_API mkldnn_post_ops_append_l2_norm(mkldnn_post_ops_t post_ops);
+
 /** @} */
 
 /** @} */
