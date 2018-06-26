@@ -49,7 +49,7 @@ execute_forward()
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
-    //auto dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
+    auto dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
     //if (jcp.with_l2norm) {
     //    auto dst_norm = reinterpret_cast<dst_data_t *>(this->memory(1));
     //}
@@ -190,6 +190,7 @@ execute_forward()
     for (int i = 0; i < jcp.mb * jcp.oh * jcp.ow * jcp.oc; ++i) {
          //*(dst_ + i) = reinterpret_cast<dst_type>(*(dst + i) * isum);
          *(dst_ + i) = *(dst + i) * isum;   // TODO: data type transform
+         *(dst_ + i) = sum;   // TODO: data type transform
     }
 
     // check the sum
