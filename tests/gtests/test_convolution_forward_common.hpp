@@ -137,7 +137,7 @@ protected:
 
         test_convolution_sizes_t cd = p.sizes;
 
-        test_convolution_attr_t attr = p.attr;
+        test_convolution_attr_t attr; //= p.attr;
         attr.mkldnn_attr_recreate();
 
         auto aprop_kind = prop_kind::forward;
@@ -160,6 +160,7 @@ protected:
         auto c_weights = test_memory(c_weights_desc, eng);
         auto c_bias = test_memory(c_bias_desc, eng);
         auto c_dst = test_memory(c_dst_desc, eng);
+        auto c_dst_l2norm = test_memory(c_dst_desc, eng);
 
         std::shared_ptr<data_t_dst>
             ref_dst_data(new data_t_dst[c_dst.get_size()]);
@@ -187,21 +188,30 @@ protected:
         auto conv_desc = with_bias
             ? convolution_forward::desc(aprop_kind, p.aalgorithm,
                     c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
-                    { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
+                    c_dst_desc,
+                    { cd.strh, cd.strw },
                     { cd.padh, cd.padw }, padR, padding_kind::zero)
             : convolution_forward::desc(aprop_kind, p.aalgorithm,
                     c_src_desc, c_weights_desc, c_dst_desc,
-                    { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
+                    c_dst_desc,
+                    { cd.strh, cd.strw },
                     { cd.padh, cd.padw }, padR, padding_kind::zero);
 
+             /* create bn_th post-attr */
+                primitive_attr conv_attr;
+                post_ops ops;
+                ops.append_l2_norm();
+                conv_attr.set_post_ops(ops);
+
+                attr.mkl_attr = conv_attr;
         auto conv_primitive_desc = convolution_forward::primitive_desc(
                 conv_desc, attr.mkl_attr, eng);
 
         auto conv = with_bias ?
             convolution_forward(conv_primitive_desc, c_src.get(),
-                    c_weights.get(), c_bias.get(), c_dst.get()) :
+                    c_weights.get(), c_bias.get(), c_dst.get(), c_dst_l2norm.get()) :
             convolution_forward(conv_primitive_desc, c_src.get(),
-                    c_weights.get(), c_dst.get());
+                    c_weights.get(), c_dst.get(), c_dst_l2norm.get());
 
         std::vector<primitive> pipeline;
         pipeline.push_back(conv);

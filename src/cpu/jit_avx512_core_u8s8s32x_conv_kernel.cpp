@@ -117,8 +117,11 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
     if (p_sum_scale && *p_sum_scale != 1.f)
         mov(reg_ptr_sum_scale, (size_t)p_sum_scale);
 
-    Zmm zmm_qusum = zmm_t(27); //zmm_inp(1, 1);
-    vpxord(zmm_qusum, zmm_qusum, zmm_qusum);
+    Zmm zmm_qusum;
+    if (jcp.with_l2_norm) {
+        zmm_qusum = zmm_t(27); //zmm_inp(1, 1);
+        vpxord(zmm_qusum, zmm_qusum, zmm_qusum);
+    }
 
     vpxord(zmm_zero, zmm_zero, zmm_zero);
     for (int k = 0; k < jcp.nb_oc_blocking; k++) {
@@ -170,8 +173,10 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             if (maybe_relu(1))
                 vmaxps(zmm, zmm_zero, zmm);
 
-            vfmadd231ps(zmm_qusum, zmm, zmm);
-             
+            if (jcp.with_l2_norm) {
+                vfmadd231ps(zmm_qusum, zmm, zmm);
+            }
+
             if (jcp.dst_dt != data_type::f32) {
                 if (attr_.round_mode_ == round_mode::nearest)
                     vcvtps2dq(zmm | T_rn_sae, zmm);
@@ -190,18 +195,19 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             }
         }
     }
-    
-    if (jcp.dst_dt != data_type::f32) {
-                if (attr_.round_mode_ == round_mode::nearest)
-                    vcvtps2dq(zmm_qusum | T_rn_sae, zmm_qusum);
-                else if (attr_.round_mode_ == round_mode::down)
-                    vcvtps2dq(zmm_qusum | T_rd_sae, zmm_qusum);
-                else
-                    assert(!"unimplemented");
-            }
-    auto addr_ = EVEX_compress_addr(reg_out_, 0);
-    vmovups(addr_, zmm_qusum); 
-
+   
+    if (jcp.with_l2_norm){ 
+        if (jcp.dst_dt != data_type::f32) {
+            if (attr_.round_mode_ == round_mode::nearest)
+                vcvtps2dq(zmm_qusum | T_rn_sae, zmm_qusum);
+            else if (attr_.round_mode_ == round_mode::down)
+                vcvtps2dq(zmm_qusum | T_rd_sae, zmm_qusum);
+            else
+                assert(!"unimplemented");
+        }
+        auto addr_ = EVEX_compress_addr(reg_out_, 0);
+        vmovups(addr_, zmm_qusum); 
+    }
     jmp(l_ret, T_NEAR);
 
     L(l_update_acc);
@@ -405,6 +411,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
         }
     }
 
+    if (jcp.with_l2_norm) {
     Zmm zmm_qusum = zmm_t(27);
     vpxord(zmm_qusum, zmm_qusum, zmm_qusum);
     mov(reg_out_, ptr[param1 + GET_OFF(dst_)]);
@@ -413,6 +420,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
          vaddps(zmm_qusum, zmm_qusum, EVEX_compress_addr(reg_out_, oc_out_shift));
     }
     vmovups(EVEX_compress_addr(reg_out_, 0), zmm_qusum);
+    }
 
     postamble();
 }
@@ -422,6 +430,7 @@ bool jit_avx512_core_u8s8s32x_fwd_kernel::post_ops_ok(
 {
     using namespace primitive_kind;
     const auto &p = attr.post_ops_;
+    jcp.with_l2_norm = false;
 
     auto is_relu = [&](int idx) {
         return p.entry_[idx].kind == eltwise
@@ -430,7 +439,8 @@ bool jit_avx512_core_u8s8s32x_fwd_kernel::post_ops_ok(
             && p.entry_[idx].eltwise.alpha == 0.;
     };
 
-   switch (p.len_) {
+   int len_ = p.len_ - 1;
+   switch (len_) {
     case 0: return true;
     case 1: return true
                 && implication(jcp.with_relu, p.contain(sum, 0))
