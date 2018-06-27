@@ -49,10 +49,8 @@ execute_forward()
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
-    auto dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
-    //if (jcp.with_l2norm) {
-    //    auto dst_norm = reinterpret_cast<dst_data_t *>(this->memory(1));
-    //}
+    //auto dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
+    dst_data_t * dst_;
 
     const memory_desc_wrapper src_d(conf_.src_pd());
     const memory_desc_wrapper dst_d(conf_.dst_pd());
@@ -67,6 +65,9 @@ execute_forward()
 
     const auto &oscales = conf_.attr()->output_scales_;
 
+    if (jcp.with_l2_norm) {
+        dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
+    }
 #   pragma omp parallel
     {
         int ithr = omp_get_thread_num(), nthr = omp_get_num_threads();
@@ -173,7 +174,7 @@ execute_forward()
         }
     }
 
-
+if (jcp.with_l2_norm) {
     double sum = 0;
     int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
 //#pragma omp parallel for collapse(3) schedule(static)    
@@ -201,6 +202,10 @@ execute_forward()
         sum_tmp += (*(dst + i)) * (*(dst + i));
     }
     std::cout << "--------origin qusum = " << sum_tmp << std::endl;
+}
+
+    std::cout << "--------end = " << std::endl;
+
 }
 
 template struct _jit_avx512_core_u8s8s32x_convolution_fwd_t<false, data_type::u8>;
