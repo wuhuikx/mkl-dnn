@@ -438,7 +438,7 @@ bool jit_avx512_core_u8s8s32x_fwd_kernel::post_ops_ok(
             && p.entry_[idx].eltwise.alpha == 0.;
     };
 
-   int len_ = p.len_; //- 1;
+   int len_ = p.len_ - 1;
    switch (len_) {
     case 0: return true;
     case 1: return true
@@ -503,7 +503,7 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.relu_negative_slope = relu_negative_slope;
     const auto &p = attr.post_ops_;
     jcp.with_l2_norm = p.find(primitive_kind::l2_norm) != -1;
-    jcp.with_l2_norm = true;
+    //jcp.with_l2_norm = true;
     jcp.ur_h = 1;
 
     if (!implication(with_relu, relu_negative_slope == 0.))
