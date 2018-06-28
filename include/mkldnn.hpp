@@ -1218,7 +1218,6 @@ struct convolution_forward: public primitive {
                         &dst_desc.data, &strides[0], &padding_l[0], &padding_r[0],
                         mkldnn::convert_to_c(apadding_kind)),
                     "could not create a convolution forward descriptor");
-            printf("----------------flag1------------------");
         }
         desc(prop_kind aprop_kind, algorithm aalgorithm,
                 const memory::desc &src_desc,
@@ -1240,7 +1239,6 @@ struct convolution_forward: public primitive {
                         &strides[0], &padding_l[0], &padding_r[0],
                         mkldnn::convert_to_c(apadding_kind)),
                     "could not create a convolution forward descriptor");
-            printf("----------------flag2------------------");
         }
         desc(prop_kind aprop_kind, algorithm aalgorithm,
                 const memory::desc &src_desc,
@@ -1259,7 +1257,6 @@ struct convolution_forward: public primitive {
                         &dst_desc.data, &strides[0], &padding_l[0], &padding_r[0],
                         mkldnn::convert_to_c(apadding_kind)),
                     "could not create a convolution forward descriptor");
-            printf("----------------flag3------------------");
         }
         desc(prop_kind aprop_kind, algorithm aalgorithm,
                 const memory::desc &src_desc,

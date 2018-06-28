@@ -224,27 +224,25 @@ protected:
                 cd, attr, c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
                 c_src.get(), c_weights.get(), c_bias.get(), ref_memory);
         compare_data<data_t_dst>(ref_memory, c_dst.get());
-    
+   
+        // check the conv_l2_norm fusion result 
         data_t_dst *dst_data = (data_t_dst *)c_dst.get().get_data_handle();
-        data_t_dst *dst_l2norm_data = (data_t_dst *)c_dst_l2norm.get().get_data_handle();
+        //data_t_dst *dst_l2norm_data = (data_t_dst *)c_dst_l2norm.get().get_data_handle();
         for (int j = 0; j < cd.mb; ++j) {
-        
              int offset = j * cd.oc * cd.oh * cd.ow;
-             double dst_qusum = 0;
+             auto dst_qusum = *(dst_data);
+             dst_qusum = 0;
              for (int i = 0; i <  cd.oc * cd.oh * cd.ow; ++i) {
                   dst_qusum += (*(dst_data + offset + i)) * (*(dst_data + offset + i));
              } 
-             std::cout << "dst_qusum = " << dst_qusum << std::endl;
-             std::cout << "dst_l2norm_qusum = " << *(dst_l2norm_data + offset) << std::endl;
-             dst_qusum = std::sqrt(dst_qusum);
-             float idst_sum = 1.0f / dst_qusum;
+             float idst_qusum = 1.0f / std::sqrt(dst_qusum);
              for (int i = 0; i < cd.oc * cd.oh * cd.ow; ++i) {
-                 *(dst_data + offset + i) += *(dst_data + offset + i) * idst_sum;
+                 *(dst_data + offset + i) = *(dst_data + offset + i) * idst_qusum;
+                 //std::cout << "dst = " << *(dst_data + offset + i) << std::endl;
+                 //std::cout << "dst_l2norm = " << *(dst_l2norm_data + offset + i) << std::endl;
              }
         }
-
-
-
+        compare_data<data_t_dst>(c_dst.get(), c_dst_l2norm.get());
     }
 };
 

@@ -84,9 +84,6 @@ struct _jit_avx512_core_u8s8s32x_convolution_fwd_t : public cpu_primitive_t {
                             * conf_.jcp_.nb_oc_blocking;
         ws_ = (acc_data_t *)malloc(
                 nthreads * ws_per_thread_ * sizeof(acc_data_t), 64);
-
-        //dst_ = (dst_data_t *)malloc(
-        //        conf_.jcp_.mb * conf_.jcp_.oc * conf_.jcp_.oh * conf_.jcp_.ow * sizeof(dst_data_t), 64);
     }
 
     ~_jit_avx512_core_u8s8s32x_convolution_fwd_t() {
