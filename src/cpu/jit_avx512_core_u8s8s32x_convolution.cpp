@@ -49,8 +49,6 @@ execute_forward()
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
-    //auto dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
-    //dst_data_t * dst_;
     auto dst_ = dst;
 
     const memory_desc_wrapper src_d(conf_.src_pd());
@@ -66,9 +64,7 @@ execute_forward()
 
     const auto &oscales = conf_.attr()->output_scales_;
 
-        std::cout << "-------------memory = "<< jcp.with_l2_norm <<std::endl;
     if (jcp.with_l2_norm) {
-        std::cout << "memory = " <<std::endl;
         dst_ = reinterpret_cast<dst_data_t *>(this->memory(1));
     }
 #   pragma omp parallel
@@ -178,58 +174,43 @@ execute_forward()
     }
 
     if (jcp.with_l2_norm) {
-
-    for (int n = 0; n < jcp.mb; ++n) {
-         int offset = n * jcp.oh * jcp.ow * jcp.oc;
+        for (int n = 0; n < jcp.mb; ++n) {
+             int offset = n * jcp.oh * jcp.ow * jcp.oc;
          
-         //long long int sum = 0;
-         auto sum = *dst_;
-         sum = 0;
-         int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
-         //#pragma omp parallel for collapse(3) schedule(static)    
-         for (int i = 0; i < jcp.oh; ++i) {
-              for (int j = 0; j < oc_chunks; ++j) {
-                   for (int u = 0; u < jcp.oc_block; ++u) {
-                        int idx = i * jcp.ow * jcp.oc + j * jcp.nb_oc_blocking * jcp.oc_block + u;
-                        sum += *(dst_ + offset + idx);
-                        //std::cout << "*(dst_ + offset + idx)" << *(dst_ + offset + idx) <<std::endl;
-                   }
-              }
-         }
-         std::cout << "--------fuse qusum = " << sum << std::endl;
+             auto sum = *dst_;
+             sum = 0;
+             int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
+             for (int i = 0; i < jcp.oh; ++i) {
+                  for (int j = 0; j < oc_chunks; ++j) {
+                       for (int u = 0; u < jcp.oc_block; ++u) {
+                            int idx = i * jcp.ow * jcp.oc + j * jcp.nb_oc_blocking * jcp.oc_block + u;
+                            sum += *(dst_ + offset + idx);
+                       }
+                  }
+             }
 
-         float isum = 1.0f / std::sqrt(sum);   
-         std::cout << "isum = " << isum <<std::endl; 
-         //#pragma omp parallel for collapse(1) schedule(static)    
-         for (int i = 0; i < jcp.oh * jcp.ow * jcp.oc; ++i) {
-              //*(dst_ + i) = reinterpret_cast<dst_type>(*(dst + i) * isum);
-         
-             //*(dst_ + i) = *(dst + i) * isum;   // TODO: data type transform
-              *(dst_ + offset + i) = static_cast<int>(sum); // TODO: data type transform
-             
-            /* 
-              switch (jcp.bia_dt) {
-                      case data_type::f32: *(dst_ + offset + i) = static_cast<float>(*(dst + i) * isum); break;
-                      case data_type::s32: *(dst_ + offset + i) = static_cast<int>(sum); break; *(dst_ + i) = static_cast<int>(*(dst + i) * isum); break;
-                      case data_type::s8: *(dst_ + offset + i) = static_cast<char>(*(dst + i) * isum); break;
-                      case data_type::u8: *(dst_ + offset + i) = static_cast<unsigned char>(*(dst + i) * isum); break;
+             float isum = 1.0f / std::sqrt(sum);   
+             //std::cout << "isum = " << isum <<std::endl; 
+             for (int i = 0; i < jcp.oh * jcp.ow * jcp.oc; ++i) {
+                 switch (jcp.bia_dt) {
+                      case data_type::f32: *(dst_ + offset + i) = static_cast<float>(*(dst + offset + i) * isum); break;
+                      case data_type::s32: *(dst_ + offset + i) = static_cast<int>(*(dst + offset + i) * isum); break;
+                      case data_type::s8: *(dst_ + offset + i) = static_cast<char>(*(dst + offset + i) * isum); break;
+                      case data_type::u8: *(dst_ + offset + i) = static_cast<unsigned char>(*(dst + offset + i) * isum); break;
                       default: assert(!"unsupported dst data type");
-              }*/
-         }
+                 }
+             }
 
-         // check the sum
-         double sum_tmp = 0;
-         //#pragma omp parallel for collapse(1) schedule(static)    
-         for (int i = 0; i < jcp.oh * jcp.ow * jcp.oc; ++i) {
-             sum_tmp += (*(dst + offset + i)) * (*(dst + offset + i));
-         }
-         std::cout << "--------origin qusum = " << sum_tmp << std::endl;
-
+            /*// check the sum
+            double sum_tmp = 0;
+            for (int i = 0; i < jcp.oh * jcp.ow * jcp.oc; ++i) {
+                 sum_tmp += (*(dst + offset + i)) * (*(dst + offset + i));
+            }
+            std::cout << "--------origin qusum = " << sum_tmp << std::endl;
+            std::cout << "--------fuse qusum = " << sum << std::endl;
+            */
+        }
     }
-}
-
-    std::cout << "--------end = " << std::endl;
-
 }
 
 template struct _jit_avx512_core_u8s8s32x_convolution_fwd_t<false, data_type::u8>;

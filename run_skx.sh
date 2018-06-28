@@ -17,9 +17,9 @@ cd ..
 
 #nohup ./build/tests/gtests/test_convolution_relu_forward_u8s8s32>log3.txt 2>1&
 
-#taskset -c 28-55 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32
+taskset -c 28-55 numactl -l ./build/tests/gtests/test_convolution_forward_u8s8s32
 #taskset -c 0-27 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32
-taskset -c 0-27 numactl -l ./build/tests/gtests/test_pooling_forward
+#taskset -c 0-27 numactl -l ./build/tests/gtests/test_pooling_forward
 #taskset -c 0-27 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32_discrete
 
 echo "test vnni forward done"
