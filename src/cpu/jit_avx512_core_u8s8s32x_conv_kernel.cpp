@@ -186,7 +186,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
                     assert(!"unimplemented");
             }
             switch (jcp.dst_dt) {
-            case data_type::f32:
+            case data_type::f32: vmovups(addr, zmm); break;
             case data_type::s32: vmovups(addr, zmm); break;
             case data_type::s8: vpmovsdb(xmm, zmm); vmovups(addr, xmm); break;
             case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
@@ -430,7 +430,6 @@ bool jit_avx512_core_u8s8s32x_fwd_kernel::post_ops_ok(
 {
     using namespace primitive_kind;
     const auto &p = attr.post_ops_;
-    jcp.with_l2_norm = false;
 
     auto is_relu = [&](int idx) {
         return p.entry_[idx].kind == eltwise
@@ -439,7 +438,7 @@ bool jit_avx512_core_u8s8s32x_fwd_kernel::post_ops_ok(
             && p.entry_[idx].eltwise.alpha == 0.;
     };
 
-   int len_ = p.len_ - 1;
+   int len_ = p.len_; //- 1;
    switch (len_) {
     case 0: return true;
     case 1: return true
@@ -502,6 +501,10 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.with_bias = cd.bias_desc.format != memory_format::undef;
     jcp.with_relu = with_relu;
     jcp.relu_negative_slope = relu_negative_slope;
+    const auto &p = attr.post_ops_;
+    jcp.with_l2_norm = p.find(primitive_kind::l2_norm) != -1;
+    jcp.with_l2_norm = true;
+    std::cout << "-------------with_l2_norm = " << jcp.with_l2_norm << std::endl; 
     jcp.ur_h = 1;
 
     if (!implication(with_relu, relu_negative_slope == 0.))

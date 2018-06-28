@@ -23,6 +23,8 @@ namespace mkldnn {
 
 using convolution_test = convolution_forward_test<uint8_t, int8_t,
                                                 int32_t, int32_t>;
+//using convolution_test = convolution_forward_test<uint8_t, int8_t,
+//                                                int32_t, float>;
 
 TEST_P(convolution_test, TestConvolution)
 {
