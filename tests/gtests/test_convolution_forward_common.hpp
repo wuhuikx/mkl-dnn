@@ -137,7 +137,7 @@ protected:
 
         test_convolution_sizes_t cd = p.sizes;
 
-        test_convolution_attr_t attr; //= p.attr;
+        test_convolution_attr_t attr = p.attr;
         attr.mkldnn_attr_recreate();
 
         auto aprop_kind = prop_kind::forward;
@@ -197,13 +197,13 @@ protected:
                     { cd.strh, cd.strw },
                     { cd.padh, cd.padw }, padR, padding_kind::zero);
 
-             /* create bn_th post-attr */
-                primitive_attr conv_attr;
-                post_ops ops;
-                ops.append_l2_norm();
-                conv_attr.set_post_ops(ops);
+        /* create bn_th post-attr */
+       /* primitive_attr conv_attr;
+        post_ops ops;
+        ops.append_l2_norm();
+        conv_attr.set_post_ops(ops);
 
-                attr.mkl_attr = conv_attr;
+        attr.mkl_attr = conv_attr;*/
         auto conv_primitive_desc = convolution_forward::primitive_desc(
                 conv_desc, attr.mkl_attr, eng);
 
@@ -224,6 +224,27 @@ protected:
                 cd, attr, c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
                 c_src.get(), c_weights.get(), c_bias.get(), ref_memory);
         compare_data<data_t_dst>(ref_memory, c_dst.get());
+    
+        data_t_dst *dst_data = (data_t_dst *)c_dst.get().get_data_handle();
+        data_t_dst *dst_l2norm_data = (data_t_dst *)c_dst_l2norm.get().get_data_handle();
+        for (int j = 0; j < cd.mb; ++j) {
+        
+             int offset = j * cd.oc * cd.oh * cd.ow;
+             double dst_qusum = 0;
+             for (int i = 0; i <  cd.oc * cd.oh * cd.ow; ++i) {
+                  dst_qusum += (*(dst_data + offset + i)) * (*(dst_data + offset + i));
+             } 
+             std::cout << "dst_qusum = " << dst_qusum << std::endl;
+             std::cout << "dst_l2norm_qusum = " << *(dst_l2norm_data + offset) << std::endl;
+             dst_qusum = std::sqrt(dst_qusum);
+             float idst_sum = 1.0f / dst_qusum;
+             for (int i = 0; i < cd.oc * cd.oh * cd.ow; ++i) {
+                 *(dst_data + offset + i) += *(dst_data + offset + i) * idst_sum;
+             }
+        }
+
+
+
     }
 };
 
