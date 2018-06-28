@@ -177,7 +177,8 @@ execute_forward()
         for (int n = 0; n < jcp.mb; ++n) {
              int offset = n * jcp.oh * jcp.ow * jcp.oc;
          
-             auto sum = *dst_;
+             //auto sum = *dst_;
+             long long sum;
              sum = 0;
              int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
              for (int i = 0; i < jcp.oh; ++i) {
@@ -201,14 +202,14 @@ execute_forward()
                  }
              }
 
-            /*// check the sum
+            // check the sum
             double sum_tmp = 0;
             for (int i = 0; i < jcp.oh * jcp.ow * jcp.oc; ++i) {
                  sum_tmp += (*(dst + offset + i)) * (*(dst + offset + i));
             }
             std::cout << "--------origin qusum = " << sum_tmp << std::endl;
             std::cout << "--------fuse qusum = " << sum << std::endl;
-            */
+            
         }
     }
 }
