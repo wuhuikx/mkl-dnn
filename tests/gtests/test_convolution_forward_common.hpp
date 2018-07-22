@@ -145,6 +145,10 @@ protected:
 
         auto aprop_kind = prop_kind::forward;
         bool with_bias = p.formats.bias_format != memory::format::format_undef;
+        //std::cout << "cd.padh" << cd.padh <<std::endl;
+        //std::cout << "cd.padw" << cd.padw <<std::endl;
+        //std::cout << "cd.flag" << (cd.padh || cd.padw) <<std::endl;
+        bool with_value_padding = (cd.padh || cd.padw) ? true : false;
 
         auto c_src_desc = create_md({ cd.mb, cd.ic, cd.ih, cd.iw },
             data_type_src, p.formats.src_format);
@@ -158,11 +162,15 @@ protected:
         auto c_bias_desc = with_bias ?
                 create_md({ cd.oc }, data_type_dst, p.formats.bias_format) :
                 create_md({}, data_type_dst, p.formats.bias_format);
+        auto c_padding_desc = with_value_padding ?
+                create_md({ cd.ic }, data_type_src, p.formats.bias_format) :
+                create_md({}, data_type_src, p.formats.bias_format);
 
         auto c_src = test_memory(c_src_desc, eng);
         auto c_weights = test_memory(c_weights_desc, eng);
         auto c_bias = test_memory(c_bias_desc, eng);
         auto c_dst = test_memory(c_dst_desc, eng);
+        auto c_padding = test_memory(c_padding_desc, eng);
 
         std::shared_ptr<data_t_dst>
             ref_dst_data(new data_t_dst[c_dst.get_size()]);
@@ -178,6 +186,16 @@ protected:
             fill_data<data_t_dst>(c_bias.get_size() / sizeof(data_t_dst),
                     (data_t_dst *)c_bias.get().get_data_handle());
         }
+        if (with_value_padding) {
+            //fill_data<data_t_src>(c_padding.get_size() / sizeof(data_t_src),
+            //        (data_t_src *)c_padding.get().get_data_handle());
+
+            data_t_src *padding_ptr = (data_t_src *)c_padding.get().get_data_handle();
+            for (int c = 0; c < cd.ic; ++c) {
+                *(padding_ptr + c) = 0;
+            }
+        }
+
         check_zero_tail<data_t_src>(1, c_src.get());
         check_zero_tail<data_t_wei>(1, c_weights.get());
         check_zero_tail<data_t_dst>(1, c_dst.get());
@@ -186,7 +204,8 @@ protected:
             right_padding(cd.ih, cd.oh, cd.kh, cd.padh, cd.strh, cd.dilh),
             right_padding(cd.iw, cd.ow, cd.kw, cd.padw, cd.strw, cd.dilw)
         };
-
+        
+       /* 
         auto conv_desc = with_bias
             ? convolution_forward::desc(aprop_kind, p.aalgorithm,
                     c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
@@ -205,6 +224,21 @@ protected:
                     c_weights.get(), c_bias.get(), c_dst.get()) :
             convolution_forward(conv_primitive_desc, c_src.get(),
                     c_weights.get(), c_dst.get());
+        
+        std::cout << "with_bias = " << with_bias << std::endl;
+        std::cout << "with_value_padding = " << with_value_padding << std::endl;
+        */
+        
+        auto conv_desc = 
+             convolution_forward::desc(aprop_kind, p.aalgorithm,
+                    c_src_desc, c_weights_desc, c_bias_desc, c_padding_desc, c_dst_desc,
+                    { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
+                    { cd.padh, cd.padw }, padR, padding_kind::zero);
+        auto conv_primitive_desc = convolution_forward::primitive_desc(
+                conv_desc, attr.mkl_attr, eng);
+        auto conv =    
+             convolution_forward(conv_primitive_desc, c_src.get(),
+                    c_weights.get(), c_bias.get(), c_padding.get(), c_dst.get());
 
         std::vector<primitive> pipeline;
         pipeline.push_back(conv);

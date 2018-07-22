@@ -76,7 +76,7 @@ struct _jit_avx512_core_u8s8s32x_convolution_fwd_t : public cpu_primitive_t {
             const input_vector &inputs, const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd)
     {
-        if (value_padding) {
+        if (conf_.jcp_.with_value_padding) {
             int r_pad = nstl::max(0, (conf_.jcp_.ow - 1) * conf_.jcp_.stride_w
                     + (conf_.jcp_.kw - 1) * (conf_.jcp_.dilate_w + 1)
                     - (conf_.jcp_.iw + conf_.jcp_.l_pad - 1));
@@ -128,7 +128,7 @@ private:
     jit_avx512_core_u8s8s32x_fwd_kernel *kernel_;
     size_t ws_per_thread_;
     acc_data_t *ws_;
-    bool value_padding = true;
+    //bool value_padding = true;
 
     jit_conv_conf_t jcp_origin;
     src_data_t *src_with_pad;

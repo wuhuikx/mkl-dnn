@@ -624,6 +624,10 @@ typedef struct {
     mkldnn_memory_desc_t bias_desc;
     /** Bias gradient memory descriptor. */
     mkldnn_memory_desc_t diff_bias_desc;
+
+    mkldnn_memory_desc_t padding_desc;
+    mkldnn_memory_desc_t diff_padding_desc;
+
     /** Destination memory descriptor. */
     mkldnn_memory_desc_t dst_desc;
     /** Destination gradient memory descriptor. */

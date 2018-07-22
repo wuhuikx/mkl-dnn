@@ -458,8 +458,14 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.src_fmt = src_d.format();
     jcp.with_bias = cd.bias_desc.format != memory_format::undef;
     jcp.with_relu = with_relu;
+    jcp.with_value_padding = cd.padding_desc.format != memory_format::undef;
     jcp.relu_negative_slope = relu_negative_slope;
     jcp.ur_h = 1;
+
+
+    //std::cout << "-----------with_bias = " << cd.bias_desc.format << std::endl;
+    //std::cout << "-----------with_bias = " << jcp.with_bias << std::endl;
+    //std::cout << "-----------with_value_padding = " << jcp.with_value_padding << std::endl;
 
     if (!implication(with_relu, relu_negative_slope == 0.))
         return status::unimplemented;

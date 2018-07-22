@@ -99,6 +99,8 @@ struct jit_conv_conf_t {
     int nb_ch, ch_block, nb_ch_blocking;
     bool is_depthwise;
     int aligned_threads;
+    // padding with value
+    bool with_value_padding;
 };
 
 struct jit_conv_conf_u8s8s32x_wino_t {
@@ -232,6 +234,7 @@ struct jit_conv_call_s {
     const void *dst; /* hack, non-const for forward */
     const void *filt; /* hack, non-const for backward_weights */
     const void *bias; /* hack, non-const for backward_bias */
+    const void *padding;
     const void *src_prf;
     const void *dst_prf;
     const void *filt_prf;

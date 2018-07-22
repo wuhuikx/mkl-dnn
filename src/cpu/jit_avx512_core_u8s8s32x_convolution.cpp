@@ -48,7 +48,6 @@ execute_forward()
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory());
-
     const memory_desc_wrapper src_d(conf_.src_pd());
     const memory_desc_wrapper dst_d(conf_.dst_pd());
     const memory_desc_wrapper weights_d(conf_.weights_pd(0));
@@ -56,13 +55,21 @@ execute_forward()
 
     const size_t bia_dt_size = conf_.with_bias()
         ? types::data_type_size(conf_.cdesc()->bias_desc.data_type) : 0;
+    const size_t padding_dt_size = conf_.with_value_padding()
+        ? types::data_type_size(conf_.cdesc()->padding_desc.data_type) : 0;
 
     const auto &jcp = kernel_->jcp;
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
 
+    auto padding = src;
+    if (jcp.with_value_padding) {
+        padding = reinterpret_cast<const src_data_t *>(this->input_memory(3));
+        std::cout << *padding << std::endl;
+    }
+
     const auto &oscales = conf_.attr()->output_scales_;
     
-    if (value_padding) {
+    if (jcp.with_value_padding) {
         auto jcp_padding = jcp_origin;
         int r_pad = nstl::max(0, (jcp_padding.ow - 1) * jcp_padding.stride_w
                 + (jcp_padding.kw - 1) * (jcp_padding.dilate_w + 1)
@@ -83,7 +90,7 @@ execute_forward()
                            + ic;
                        if (iw < jcp_padding.l_pad || iw >= jcp_padding.l_pad + jcp_padding.iw ||
                            ih < jcp_padding.t_pad || ih >= jcp_padding.t_pad + jcp_padding.ih) {
-                           *(src_with_pad + index) = 0;
+                           *(src_with_pad + index) = *(padding + ic);
                        } else {
                            int index_src = mb * jcp_padding.ih * jcp_padding.iw * jcp_padding.ic 
                               + (ih - jcp_padding.t_pad) * jcp_padding.iw * jcp_padding.ic 
@@ -120,7 +127,7 @@ execute_forward()
         size_t dst_h_stride = dst_d.blk_off(0, 0, 1);
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
         size_t wht_ic_stride = wht_blk_off(weights_d, 0, 0, 1);
-        if (value_padding) {
+        if (jcp.with_value_padding) {
            src_h_stride = jcp.iw * jcp.ic_block;
         }
         //std::cout << "src_h_stride = " << src_h_stride << std::endl; 
@@ -149,12 +156,16 @@ execute_forward()
             int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
 
             auto bias_w = bias ? bias + (bias_d.blk_off(g_oc) * bia_dt_size) : 0;
-
+            auto padding_w = padding; 
+            if (jcp.with_value_padding) {
+               padding_w = padding + (bias_d.blk_off(g_oc) * padding_dt_size);
+             
+            }
             auto dst_w = dst + dst_d.blk_off(n, g_oc, oh_s);
             auto src_w = src + src_d.blk_off(n, g_ic, ih_s);
             auto wht_w = weights + wht_blk_off(weights_d, gb, ocb, 0);
             size_t src_blk_off = src_d.blk_off(n, g_ic, ih_s);
-            if (value_padding) {
+            if (jcp.with_value_padding) {
                src_blk_off = n * jcp.ic * jcp.ih * jcp.iw
                     + g_ic * jcp.ih * jcp.iw
                     + ih_s * jcp.iw * jcp.ic_block;
@@ -186,6 +197,7 @@ execute_forward()
                     p.dst = dst_c;
                     p.filt = wht_w + i_t_overflow * wht_h_stride;
                     p.bias = bias_w;
+                    p.padding = padding_w;
                     p.acc_s32 = ws_c;
                     p.channel = icb;
                     p.kh_padding = kh_padding;
