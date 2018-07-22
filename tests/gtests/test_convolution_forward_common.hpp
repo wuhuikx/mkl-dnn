@@ -210,7 +210,20 @@ protected:
         pipeline.push_back(conv);
         auto s = stream(stream::kind::lazy);
         s.submit(pipeline).wait();
-
+        
+        /*
+        data_t_dst *dst_ptr = (data_t_dst *)c_dst.get().get_data_handle();
+        for (int n = 0; n < cd.mb; ++n) {
+            for (int c = 0; c < cd.oc; ++c) {
+                for (int h = 0; h < cd.oh; ++h) {
+                    for (int w = 0; w < cd.ow; ++w) {
+                        int index = n * cd.oc * cd.oh * cd.ow + c * cd.oh * cd.ow +
+                            h * cd.ow + w;
+                        std::cout << *(dst_ptr + index) << std::endl;
+                    }
+                }
+            }
+        }*/
         auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
                 ref_dst_data.get());
         compute_ref_conv_fwd<data_t_src,data_t_wei,data_t_acc,data_t_dst>(

@@ -25,6 +25,7 @@
 #include "cpu_barrier.hpp"
 
 #include "jit_avx512_core_u8s8s32x_conv_kernel.hpp"
+#include <iostream>
 
 namespace mkldnn {
 namespace impl {
@@ -75,6 +76,25 @@ struct _jit_avx512_core_u8s8s32x_convolution_fwd_t : public cpu_primitive_t {
             const input_vector &inputs, const output_vector &outputs)
         : cpu_primitive_t(&conf_, inputs, outputs), conf_(*pd)
     {
+        if (value_padding) {
+            int r_pad = nstl::max(0, (conf_.jcp_.ow - 1) * conf_.jcp_.stride_w
+                    + (conf_.jcp_.kw - 1) * (conf_.jcp_.dilate_w + 1)
+                    - (conf_.jcp_.iw + conf_.jcp_.l_pad - 1));
+            int b_pad = nstl::max(0, (conf_.jcp_.oh - 1) * conf_.jcp_.stride_h
+                    + (conf_.jcp_.kh - 1) * (conf_.jcp_.dilate_h + 1)
+                    - (conf_.jcp_.ih + conf_.jcp_.t_pad - 1));
+            int iw_with_pad = conf_.jcp_.iw + conf_.jcp_.l_pad + r_pad;
+            int ih_with_pad = conf_.jcp_.ih + conf_.jcp_.t_pad + b_pad;
+            
+            jcp_origin = conf_.jcp_;
+            conf_.jcp_.iw = conf_.jcp_.iw + conf_.jcp_.l_pad + r_pad;
+            conf_.jcp_.ih = conf_.jcp_.ih + conf_.jcp_.t_pad + b_pad;
+            conf_.jcp_.t_pad = 0;
+            conf_.jcp_.l_pad = 0;
+            src_with_pad = (src_data_t *)malloc(
+                    conf_.jcp_.mb * ih_with_pad * iw_with_pad * conf_.jcp_.ic * sizeof(src_data_t), 64);
+        }
+
         kernel_ = new jit_avx512_core_u8s8s32x_fwd_kernel(conf_.jcp_,
                     *conf_.attr());
 
@@ -83,6 +103,7 @@ struct _jit_avx512_core_u8s8s32x_convolution_fwd_t : public cpu_primitive_t {
                             * conf_.jcp_.nb_oc_blocking;
         ws_ = (acc_data_t *)malloc(
                 nthreads * ws_per_thread_ * sizeof(acc_data_t), 64);
+        
     }
 
     ~_jit_avx512_core_u8s8s32x_convolution_fwd_t() {
@@ -107,6 +128,10 @@ private:
     jit_avx512_core_u8s8s32x_fwd_kernel *kernel_;
     size_t ws_per_thread_;
     acc_data_t *ws_;
+    bool value_padding = true;
+
+    jit_conv_conf_t jcp_origin;
+    src_data_t *src_with_pad;
 };
 
 template <impl::data_type_t dst_type>

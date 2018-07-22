@@ -21,7 +21,7 @@
 #include "cpu_memory.hpp"
 
 #include "jit_avx512_core_u8s8s32x_conv_kernel.hpp"
-
+#include <iostream>
 #define GET_OFF(field) offsetof(jit_conv_call_s, field)
 
 namespace mkldnn {

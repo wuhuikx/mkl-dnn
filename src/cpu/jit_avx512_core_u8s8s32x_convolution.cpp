@@ -21,6 +21,7 @@
 #include "utils.hpp"
 
 #include "jit_avx512_core_u8s8s32x_convolution.hpp"
+#include <iostream>
 
 namespace mkldnn {
 namespace impl {
@@ -60,6 +61,43 @@ execute_forward()
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
 
     const auto &oscales = conf_.attr()->output_scales_;
+    
+    if (value_padding) {
+        auto jcp_padding = jcp_origin;
+        int r_pad = nstl::max(0, (jcp_padding.ow - 1) * jcp_padding.stride_w
+                + (jcp_padding.kw - 1) * (jcp_padding.dilate_w + 1)
+                - (jcp_padding.iw + jcp_padding.l_pad - 1));
+        int b_pad = nstl::max(0, (jcp_padding.oh - 1) * jcp_padding.stride_h
+                + (jcp_padding.kh - 1) * (jcp_padding.dilate_h + 1)
+                - (jcp_padding.ih + jcp_padding.t_pad - 1));
+        int iw_with_pad = jcp_padding.iw + jcp_padding.l_pad + r_pad;
+        int ih_with_pad = jcp_padding.ih + jcp_padding.t_pad + b_pad;
+ 
+       for (int mb = 0; mb < jcp_padding.mb; ++mb) {
+           for (int ih = 0; ih < ih_with_pad; ++ih) {
+               for (int iw = 0; iw < iw_with_pad; ++iw) {
+                   for (int ic = 0; ic < jcp_padding.ic; ++ic) {
+                       int index = mb * ih_with_pad * iw_with_pad * jcp_padding.ic
+                           + ih * iw_with_pad * jcp_padding.ic
+                           + iw * jcp_padding.ic
+                           + ic;
+                       if (iw < jcp_padding.l_pad || iw >= jcp_padding.l_pad + jcp_padding.iw ||
+                           ih < jcp_padding.t_pad || ih >= jcp_padding.t_pad + jcp_padding.ih) {
+                           *(src_with_pad + index) = 0;
+                       } else {
+                           int index_src = mb * jcp_padding.ih * jcp_padding.iw * jcp_padding.ic 
+                              + (ih - jcp_padding.t_pad) * jcp_padding.iw * jcp_padding.ic 
+                              + (iw - jcp_padding.l_pad) * jcp_padding.ic
+                              + ic;
+                           *(src_with_pad + index) = *(src + index_src);
+                       }                      
+                   }
+               }
+           }
+       }
+       src = src_with_pad;
+    }
+    
 
 #   pragma omp parallel
     {
@@ -82,6 +120,10 @@ execute_forward()
         size_t dst_h_stride = dst_d.blk_off(0, 0, 1);
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
         size_t wht_ic_stride = wht_blk_off(weights_d, 0, 0, 1);
+        if (value_padding) {
+           src_h_stride = jcp.iw * jcp.ic_block;
+        }
+        //std::cout << "src_h_stride = " << src_h_stride << std::endl; 
 
         int n{0}, gb{0}, occ{0}, oh_s{0};
         if (jcp.loop_order == loop_cgn)
@@ -111,6 +153,14 @@ execute_forward()
             auto dst_w = dst + dst_d.blk_off(n, g_oc, oh_s);
             auto src_w = src + src_d.blk_off(n, g_ic, ih_s);
             auto wht_w = weights + wht_blk_off(weights_d, gb, ocb, 0);
+            size_t src_blk_off = src_d.blk_off(n, g_ic, ih_s);
+            if (value_padding) {
+               src_blk_off = n * jcp.ic * jcp.ih * jcp.iw
+                    + g_ic * jcp.ih * jcp.iw
+                    + ih_s * jcp.iw * jcp.ic_block;
+               src_w = src + src_blk_off; 
+            }
+            //std::cout << "src_blk_off = " << src_blk_off << std::endl;
 
             auto scales = &oscales.scales_[jcp.is_oc_scale * g_oc];
 
