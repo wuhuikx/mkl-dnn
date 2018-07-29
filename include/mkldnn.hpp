@@ -1247,7 +1247,6 @@ struct convolution_forward: public primitive {
             memory::validate_dims(strides);
             memory::validate_dims(padding_l);
             memory::validate_dims(padding_r);
-            std::cout << "----------------flag3" << std::endl;
             error::wrap_c_api(mkldnn_convolution_forward_desc_init(&data,
                         mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
                         &src_desc.data, &weights_desc.data, nullptr,
@@ -1269,7 +1268,6 @@ struct convolution_forward: public primitive {
             memory::validate_dims(dilates);
             memory::validate_dims(padding_l);
             memory::validate_dims(padding_r);
-            std::cout << "----------------flag4" << std::endl;
             error::wrap_c_api(
                 mkldnn_dilated_convolution_forward_desc_init(&data,
                     mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
@@ -1294,7 +1292,6 @@ struct convolution_forward: public primitive {
             memory::validate_dims(dilates);
             memory::validate_dims(padding_l);
             memory::validate_dims(padding_r);
-            std::cout << "----------------flag4" << std::endl;
             error::wrap_c_api(
                 mkldnn_dilated_convolution_forward_with_padding_desc_init(&data,
                     mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
@@ -1317,7 +1314,6 @@ struct convolution_forward: public primitive {
             memory::validate_dims(dilates);
             memory::validate_dims(padding_l);
             memory::validate_dims(padding_r);
-            std::cout << "----------------flag5" << std::endl;
             error::wrap_c_api(
                 mkldnn_dilated_convolution_forward_desc_init(&data,
                     mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),

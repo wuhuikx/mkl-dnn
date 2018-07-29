@@ -1,11 +1,14 @@
 sudo echo 0 > /proc/sys/kernel/numa_balancing
-export OMP_NUM_THREADS=28
-export MKL_NUM_THREADS=28
+export OMP_NUM_THREADS=56
+export MKL_NUM_THREADS=56
 export KMP_AFFINITY="granularity=fine,compact,0,0"
 #export KMP_AFFINITY="explicit,1,0,granularity=fine, proclist=[28-55]"
 #cpupower frequency-set -g performance 
 
+#rm -rf build
+#mkdir build
 cd build
+#cmake ..
 make -j `nproc`
 cd ..
 
@@ -17,7 +20,7 @@ cd ..
 
 #nohup ./build/tests/gtests/test_convolution_relu_forward_u8s8s32>log3.txt 2>1&
 
-taskset -c 28-55 numactl -l ./build/tests/gtests/test_convolution_forward_u8s8s32
+taskset -c 0-55 numactl -l ./build/tests/gtests/test_convolution_forward_u8s8s32
 #taskset -c 0-27 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32
 #taskset -c 0-27 numactl -l ./build/tests/gtests/test_pooling_forward
 #taskset -c 0-27 numactl -l ./build/tests/gtests/test_convolution_relu_forward_u8s8s32_discrete

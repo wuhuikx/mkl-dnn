@@ -64,7 +64,6 @@ execute_forward()
     auto padding = src;
     if (jcp.with_value_padding) {
         padding = reinterpret_cast<const src_data_t *>(this->input_memory(3));
-        std::cout << *padding << std::endl;
     }
 
     const auto &oscales = conf_.attr()->output_scales_;
@@ -96,7 +95,7 @@ execute_forward()
                               + (ih - jcp_padding.t_pad) * jcp_padding.iw * jcp_padding.ic 
                               + (iw - jcp_padding.l_pad) * jcp_padding.ic
                               + ic;
-                           *(src_with_pad + index) = *(src + index_src);
+                           *(src_with_pad + index) = *(src + index_src) + abs(*(padding + ic));
                        }                      
                    }
                }
@@ -104,7 +103,6 @@ execute_forward()
        }
        src = src_with_pad;
     }
-    
 
 #   pragma omp parallel
     {
@@ -128,9 +126,8 @@ execute_forward()
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
         size_t wht_ic_stride = wht_blk_off(weights_d, 0, 0, 1);
         if (jcp.with_value_padding) {
-           src_h_stride = jcp.iw * jcp.ic_block;
+           src_h_stride = jcp.iw * jcp.ic;
         }
-        //std::cout << "src_h_stride = " << src_h_stride << std::endl; 
 
         int n{0}, gb{0}, occ{0}, oh_s{0};
         if (jcp.loop_order == loop_cgn)
@@ -167,11 +164,9 @@ execute_forward()
             size_t src_blk_off = src_d.blk_off(n, g_ic, ih_s);
             if (jcp.with_value_padding) {
                src_blk_off = n * jcp.ic * jcp.ih * jcp.iw
-                    + g_ic * jcp.ih * jcp.iw
-                    + ih_s * jcp.iw * jcp.ic_block;
+                    + ih_s * jcp.iw * jcp.ic + g_ic;
                src_w = src + src_blk_off; 
             }
-            //std::cout << "src_blk_off = " << src_blk_off << std::endl;
 
             auto scales = &oscales.scales_[jcp.is_oc_scale * g_oc];
 

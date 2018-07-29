@@ -27,9 +27,47 @@
 
 namespace mkldnn {
 
+template<typename data_t>
+void print_func(std::vector<int> &c, data_t* data_ptr) {
+    for (int mb = 0; mb < c[0]; ++mb) {
+        for (int ic = 0; ic < c[1]; ++ic) {
+            std::cout << "-------------ic = " << ic << std::endl;
+            for (int ih = 0; ih < c[2]; ++ih) {
+                for (int iw = 0; iw < c[3]; ++iw) {
+                    int index = mb * c[1] * c[2] * c[3] +
+                            ic * c[2] * c[3] +
+                            ih * c[3] +
+                            iw;
+
+                    std::cout << "src = " << int(*(data_ptr + index)) << std::endl;
+                }
+                std::cout << "  " << std::endl;
+            }
+        }
+    } 
+}
+
+template<typename data_t>
+void fill_fix_data(std::vector<int> &c, data_t* data_ptr, data_t value) {
+
+    for (int mb = 0; mb < c[0]; ++mb) {
+        for (int ic = 0; ic < c[1]; ++ic) {
+            for (int ih = 0; ih < c[2]; ++ih) {
+                for (int iw = 0; iw < c[3]; ++iw) {
+                    int index = mb * c[1] * c[2] * c[3] +
+                            ic * c[2] * c[3] +
+                            ih * c[3] +
+                            iw;
+                    *(data_ptr + index) = value; 
+                }
+            }
+        }
+    }
+}
+
 template <typename data_t_src, typename data_t_wei,
           typename data_t_acc, typename data_t_dst>
-void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
+void compute_ref_conv_fwd(test_convolution_sizes_t &c,
         const test_convolution_attr_t &attr,
         const memory::desc &src_d,
         const memory::desc &weights_d,
@@ -38,7 +76,8 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
         const memory &src,
         const memory &weights,
         const memory &bias,
-        const memory &dst)
+        const memory &dst,
+        std::vector<int> &padding)
 {
     const bool w_bias = bias_d.data.format != memory::format::format_undef;
     data_t_src *src_data = (data_t_src *)src.get_data_handle();
@@ -49,6 +88,67 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
 
     size_t padded_ic = src_d.data.layout_desc.blocking.padding_dims[1];
     size_t padded_oc = dst_d.data.layout_desc.blocking.padding_dims[1];
+
+    size_t ih_with_pad  = c.ih + 2 * c.padh;
+    size_t iw_with_pad  = c.iw + 2 * c.padw;
+    data_t_src *src_with_pad = (data_t_src *)malloc(
+         c.mb * c.ic * ih_with_pad * iw_with_pad * sizeof(data_t_src)); 
+     
+    for (int mb = 0; mb < c.mb; ++mb) {
+        for (int ih = 0; ih < ih_with_pad; ++ih) {
+            for (int iw = 0; iw < iw_with_pad; ++iw) {
+                for (int ic = 0; ic < c.ic; ++ic) {
+                     int index = mb * c.ic * ih_with_pad * iw_with_pad 
+                         + ih * iw_with_pad * c.ic
+                         + iw * c.ic
+                         + ic;
+                     if (iw < c.padw || iw >= c.padw + c.iw ||
+                         ih < c.padh || ih >= c.padh + c.ih) {
+                        *(src_with_pad + index) = padding[ic];
+                     } else {
+                        int index_src = mb * c.ic * c.ih * c.iw 
+                            + (ih - c.padh) * c.iw * c.ic
+                            + (iw - c.padw) * c.ic
+                            + ic; 
+                        *(src_with_pad + index) = *(src_data + index_src) + padding[ic];
+                     }
+                }
+            }
+        }
+    }
+    // print src
+    // std::vector<int> size_src{c.mb, c.ic, c.ih, c.iw};
+    // print_func<data_t_src>(size_src, src_data);
+   
+    data_t_src *src_reorder = (data_t_src *)malloc(
+         c.mb * c.ic * ih_with_pad * iw_with_pad * sizeof(data_t_src)); 
+    
+    for (int mb = 0; mb < c.mb; ++mb) {
+        for (int ih = 0; ih < ih_with_pad; ++ih) {
+            for (int iw = 0; iw < iw_with_pad; ++iw) {
+                for (int ic = 0; ic < c.ic; ++ic) {
+                     int index = mb * c.ic * ih_with_pad * iw_with_pad 
+                         + ih * iw_with_pad * c.ic
+                         + iw * c.ic
+                         + ic;
+                     int index_reorder = mb * c.ic * ih_with_pad * iw_with_pad
+                         + ic * ih_with_pad * iw_with_pad
+                         + ih * iw_with_pad
+                         + iw;
+                     *(src_reorder + index_reorder) = *(src_with_pad + index);
+                }
+            }
+        }
+    }
+    src_data = src_reorder;
+    c.iw = iw_with_pad;
+    c.ih = ih_with_pad;
+    c.padh = 0;
+    c.padw = 0; 
+    // print src_with_pad
+    // std::vector<int> size_src_pad{c.mb, c.ic, c.ih, c.iw};
+    // print_func<data_t_src>(size_src_pad, src_data);
+
 
 #pragma omp parallel for collapse(5) schedule(static)
     for (int n = 0; n < c.mb; n++) {
@@ -64,8 +164,8 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
                                           - c.padw + kw * (1 + c.dilw);
                                     int ih = oh * c.strh
                                           - c.padh + kh * (1 + c.dilh);
-                                    if (iw < 0 || iw >= c.iw) continue;
-                                    if (ih < 0 || ih >= c.ih) continue;
+                                    //if (iw < 0 || iw >= c.iw) continue;
+                                    //if (ih < 0 || ih >= c.ih) continue;
                                     size_t iidx = n * padded_ic * c.ih * c.iw
                                         + g * padded_ic / c.ng * c.ih * c.iw
                                         + ic * c.ih * c.iw + ih * c.iw + iw;
@@ -73,10 +173,14 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
                                         / c.ng * c.kh * c.kw
                                         + oc * padded_ic / c.ng * c.kh * c.kw
                                         + ic * c.kh * c.kw + kh * c.kw + kw;
-                                    a += ((data_t_acc)
-                                        src_data[map_index(src_d, iidx)])
-                                        *  weights_data[map_index(
-                                        weights_d, widx)];
+
+                                    //a += ((data_t_acc)
+                                    //    src_data[map_index(src_d, iidx)])
+                                    //    *  weights_data[map_index(
+                                    //    weights_d, widx)];
+
+                                    a += data_t_acc( *(src_data + iidx) 
+                                         * weights_data[map_index(weights_d, widx)] );
                                 }
                             }
                         }
@@ -85,9 +189,7 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
 
                         a_fp += (float)(bias_data ?
                             bias_data[map_index(bias_d,
-                                        g * c.oc / c.ng + oc)] :
-                            0);
-
+                                        g * c.oc / c.ng + oc)] : 0);
 
                         if (attr.oscale.is_def()) {
                             const auto &s = attr.oscale;
@@ -115,6 +217,10 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
             }
         }
     }
+    
+    // print dst
+    // std::vector<int> size_dst{c.mb, c.oc, c.oh, c.ow};
+    // print_func<data_t_dst>(size_dst, dst_data);
 }
 
 template <typename data_t_src, typename data_t_wei,
@@ -145,9 +251,6 @@ protected:
 
         auto aprop_kind = prop_kind::forward;
         bool with_bias = p.formats.bias_format != memory::format::format_undef;
-        //std::cout << "cd.padh" << cd.padh <<std::endl;
-        //std::cout << "cd.padw" << cd.padw <<std::endl;
-        //std::cout << "cd.flag" << (cd.padh || cd.padw) <<std::endl;
         bool with_value_padding = (cd.padh || cd.padw) ? true : false;
 
         auto c_src_desc = create_md({ cd.mb, cd.ic, cd.ih, cd.iw },
@@ -186,13 +289,33 @@ protected:
             fill_data<data_t_dst>(c_bias.get_size() / sizeof(data_t_dst),
                     (data_t_dst *)c_bias.get().get_data_handle());
         }
+        
+        std::vector<int> padding(cd.ic, 1);
+        //generate random number between [1, 10] per-ic-channel
+        for (int i = 0; i < cd.ic; ++i) {
+            padding[i] = std::rand()%(10-1+1)+1;
+        }
         if (with_value_padding) {
             //fill_data<data_t_src>(c_padding.get_size() / sizeof(data_t_src),
             //        (data_t_src *)c_padding.get().get_data_handle());
 
+            //std::vector<int> src_size{cd.mb, cd.ic, cd.ih, cd.iw}; 
+            //data_t_src *src_ptr = (data_t_src *)c_src.get().get_data_handle();
+            //fill_fix_data<data_t_src>(src_size, src_ptr, data_t_src(2));
+
+            //vector<int> weights_size{cd.oc, cd.ic, cd.kh, cd.kw}; 
+            //data_t_wei *weights_ptr = (data_t_wei *)c_wei.get().get_data_handle();
+            //fill_fix_data<data_t_wei>(weights_size, wei_ptr, data_t_wei(1));
+                
+           /* 
+            data_t_dst *bias_ptr = (data_t_dst*)c_bias.get().get_data_handle();
+            for (int c = 0; c < cd.oc; ++c) {
+                *(bias_ptr + c) = 0;
+            }*/
+           
             data_t_src *padding_ptr = (data_t_src *)c_padding.get().get_data_handle();
             for (int c = 0; c < cd.ic; ++c) {
-                *(padding_ptr + c) = 0;
+                *(padding_ptr + c) = padding[c];
             }
         }
 
@@ -224,9 +347,6 @@ protected:
                     c_weights.get(), c_bias.get(), c_dst.get()) :
             convolution_forward(conv_primitive_desc, c_src.get(),
                     c_weights.get(), c_dst.get());
-        
-        std::cout << "with_bias = " << with_bias << std::endl;
-        std::cout << "with_value_padding = " << with_value_padding << std::endl;
         */
         
         auto conv_desc = 
@@ -245,24 +365,16 @@ protected:
         auto s = stream(stream::kind::lazy);
         s.submit(pipeline).wait();
         
-        /*
-        data_t_dst *dst_ptr = (data_t_dst *)c_dst.get().get_data_handle();
-        for (int n = 0; n < cd.mb; ++n) {
-            for (int c = 0; c < cd.oc; ++c) {
-                for (int h = 0; h < cd.oh; ++h) {
-                    for (int w = 0; w < cd.ow; ++w) {
-                        int index = n * cd.oc * cd.oh * cd.ow + c * cd.oh * cd.ow +
-                            h * cd.ow + w;
-                        std::cout << *(dst_ptr + index) << std::endl;
-                    }
-                }
-            }
-        }*/
+        // print dst
+        //data_t_dst *dst_ptr = (data_t_dst *)c_dst.get().get_data_handle();
+        //std::vector<int> size_dst{c.mb, c.oc, c.oh, c.ow};
+        //print_func<data_t_dst>(size_dst, dst_ptr);
+                
         auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
                 ref_dst_data.get());
         compute_ref_conv_fwd<data_t_src,data_t_wei,data_t_acc,data_t_dst>(
                 cd, attr, c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
-                c_src.get(), c_weights.get(), c_bias.get(), ref_memory);
+                c_src.get(), c_weights.get(), c_bias.get(), ref_memory, padding);
         check_zero_tail<data_t_dst>(1, ref_memory);
 
         compare_data<data_t_dst>(ref_memory, c_dst.get());
