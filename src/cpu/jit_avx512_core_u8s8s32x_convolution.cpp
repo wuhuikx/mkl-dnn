@@ -72,7 +72,9 @@ execute_forward()
     
     if (jcp.with_value_padding) {
         auto src_tmp = reinterpret_cast<const wei_data_t *>(this->input_memory(0));
-       /*
+        
+       auto jcp_padding = jcp_origin;
+       
        for (int mb = 0; mb < jcp_padding.mb; ++mb) {
             for (int ih = 0; ih < jcp_padding.ih; ++ih) {
                  for (int iw = 0; iw < jcp_padding.iw; ++iw) {
@@ -86,9 +88,7 @@ execute_forward()
                   }
              }
        }
-    */
-        
-        auto jcp_padding = jcp_origin;
+    
         int r_pad = nstl::max(0, (jcp_padding.ow - 1) * jcp_padding.stride_w
                 + (jcp_padding.kw - 1) * (jcp_padding.dilate_w + 1)
                 - (jcp_padding.iw + jcp_padding.l_pad - 1));
@@ -116,7 +116,7 @@ execute_forward()
                               + ic;
                            *(src_with_pad + index) = src_data_t(*(src_tmp + index_src) + abs(*(padding + ic)));
                        } 
-                       //std::cout << "src_with_pad = " << *(src_with_pad + index) << std::endl;                     
+                       std::cout << "src_with_pad = " << int(*(src_with_pad + index)) << std::endl;                     
                    }
                }
            }
