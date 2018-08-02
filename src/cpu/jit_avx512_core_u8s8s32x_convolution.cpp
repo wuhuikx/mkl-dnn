@@ -48,6 +48,8 @@ execute_forward()
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
     auto dst = reinterpret_cast<dst_data_t *>(this->memory());
+
+
     const memory_desc_wrapper src_d(conf_.src_pd());
     const memory_desc_wrapper dst_d(conf_.dst_pd());
     const memory_desc_wrapper weights_d(conf_.weights_pd(0));
@@ -69,6 +71,23 @@ execute_forward()
     const auto &oscales = conf_.attr()->output_scales_;
     
     if (jcp.with_value_padding) {
+        auto src_tmp = reinterpret_cast<const wei_data_t *>(this->input_memory(0));
+       /*
+       for (int mb = 0; mb < jcp_padding.mb; ++mb) {
+            for (int ih = 0; ih < jcp_padding.ih; ++ih) {
+                 for (int iw = 0; iw < jcp_padding.iw; ++iw) {
+                      for (int ic = 0; ic < jcp_padding.ic; ++ic) {
+                           int index = mb * jcp_padding.ih * jcp_padding.iw * jcp_padding.ic
+                                + ih * jcp_padding.iw * jcp_padding.ic
+                                + iw * jcp_padding.ic
+                                + ic;
+                            std::cout << "src_origin = " << int(*(src_tmp + index)) << std::endl;             
+                       }
+                  }
+             }
+       }
+    */
+        
         auto jcp_padding = jcp_origin;
         int r_pad = nstl::max(0, (jcp_padding.ow - 1) * jcp_padding.stride_w
                 + (jcp_padding.kw - 1) * (jcp_padding.dilate_w + 1)
@@ -95,13 +114,14 @@ execute_forward()
                               + (ih - jcp_padding.t_pad) * jcp_padding.iw * jcp_padding.ic 
                               + (iw - jcp_padding.l_pad) * jcp_padding.ic
                               + ic;
-                           *(src_with_pad + index) = *(src + index_src) + abs(*(padding + ic));
-                       }                      
+                           *(src_with_pad + index) = src_data_t(*(src_tmp + index_src) + abs(*(padding + ic)));
+                       } 
+                       //std::cout << "src_with_pad = " << *(src_with_pad + index) << std::endl;                     
                    }
                }
            }
        }
-       src = src_with_pad;
+       src = reinterpret_cast<src_data_t *>(src_with_pad);
     }
 
 #   pragma omp parallel

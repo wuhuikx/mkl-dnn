@@ -81,6 +81,7 @@ void compute_ref_conv_fwd(test_convolution_sizes_t &c,
 {
     const bool w_bias = bias_d.data.format != memory::format::format_undef;
     data_t_src *src_data = (data_t_src *)src.get_data_handle();
+    data_t_wei *src_data_tmp = (data_t_wei *)src.get_data_handle();
     data_t_wei *weights_data = (data_t_wei *)weights.get_data_handle();
 
     data_t_dst *bias_data = w_bias ? (data_t_dst *)bias.get_data_handle() : nullptr;
@@ -110,7 +111,7 @@ void compute_ref_conv_fwd(test_convolution_sizes_t &c,
                             + (ih - c.padh) * c.iw * c.ic
                             + (iw - c.padw) * c.ic
                             + ic; 
-                        *(src_with_pad + index) = *(src_data + index_src) + padding[ic];
+                        *(src_with_pad + index) = data_t_src(*(src_data_tmp + index_src) + padding[ic]);
                      }
                 }
             }
@@ -140,7 +141,7 @@ void compute_ref_conv_fwd(test_convolution_sizes_t &c,
             }
         }
     }
-    src_data = src_reorder;
+    src_data = reinterpret_cast<data_t_src *>(src_reorder);
     c.iw = iw_with_pad;
     c.ih = ih_with_pad;
     c.padh = 0;
@@ -293,7 +294,7 @@ protected:
         std::vector<int> padding(cd.ic, 1);
         //generate random number between [1, 10] per-ic-channel
         for (int i = 0; i < cd.ic; ++i) {
-            padding[i] = std::rand()%(10-1+1)+1;
+            padding[i] = std::rand()%(255-1+1)+1;
         }
         if (with_value_padding) {
             //fill_data<data_t_src>(c_padding.get_size() / sizeof(data_t_src),
@@ -312,7 +313,23 @@ protected:
             for (int c = 0; c < cd.oc; ++c) {
                 *(bias_ptr + c) = 0;
             }*/
-           
+
+            data_t_wei *src_ptr = (data_t_wei *)c_src.get().get_data_handle();
+            for (int mb = 0; mb < cd.mb; ++mb) {
+                for (int ih = 0; ih < cd.ih; ++ih) {
+                    for (int iw = 0; iw < cd.iw; ++iw) {
+                        for (int ic = 0; ic < cd.ic; ++ic) {
+                             int index = mb * cd.ih * cd.iw * cd.ic +
+                                         ih * cd.iw * cd.ic +
+                                         iw * cd.ic +
+                                         ic;
+                             *(src_ptr + index) =  *(src_ptr + index) - padding[ic];
+                             //std::cout << "*(src_ptr + index) = " << int(*(src_ptr + index)) << std::endl;
+                        }
+                    }
+                }
+            } 
+            
             data_t_src *padding_ptr = (data_t_src *)c_padding.get().get_data_handle();
             for (int c = 0; c < cd.ic; ++c) {
                 *(padding_ptr + c) = padding[c];
