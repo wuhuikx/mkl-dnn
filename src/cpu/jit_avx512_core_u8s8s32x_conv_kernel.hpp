@@ -66,6 +66,7 @@ private:
     reg64_t reg_inp = r8;
     reg64_t reg_ker = r9;
     reg64_t reg_out = r10;
+    reg64_t reg_out_concat = rsi; 
     reg64_t aux_reg_inp = r11;
     reg64_t reg_ptr_sum_scale = r11;
     reg64_t aux_reg_ker = r12;

@@ -99,6 +99,10 @@ struct jit_conv_conf_t {
     int nb_ch, ch_block, nb_ch_blocking;
     bool is_depthwise;
     int aligned_threads;
+
+    // fuse concat
+    bool with_concat;
+    int mb_concat, oh_concat, ow_concat, oc_concat; 
 };
 
 struct jit_conv_conf_u8s8s32x_wino_t {
@@ -250,6 +254,8 @@ struct jit_conv_call_s {
     size_t ur_str_w;
     size_t ch_blocks;
     int flags;
+
+    const void *dst_concat; // for fuse concat
 };
 
 struct jit_wino_transform_call_s {

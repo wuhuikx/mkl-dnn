@@ -103,11 +103,11 @@
     {mkldnn::round_mode, scale, test_convolution_attr_t::scale_t::policy}, \
     {__VA_ARGS__} }
 
-#ifdef TEST_PARAM_ATTR
-#include "convolution_attr.h"
-#else
+//#ifdef TEST_PARAM_ATTR
+//#include "convolution_attr.h"
+//#else
 #include "convolution_simple_small.h"
-#endif
+//#endif
 //#include "convolution_alexnet.h"
 //#include "convolution_googlenet_v1.h"
 //#include "convolution_googlenet_v2.h"

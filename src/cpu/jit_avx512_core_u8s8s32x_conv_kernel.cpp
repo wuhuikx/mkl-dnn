@@ -21,7 +21,7 @@
 #include "cpu_memory.hpp"
 
 #include "jit_avx512_core_u8s8s32x_conv_kernel.hpp"
-
+#include <iostream>
 #define GET_OFF(field) offsetof(jit_conv_call_s, field)
 
 namespace mkldnn {
@@ -174,6 +174,17 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
                 else
                     assert(!"unimplemented");
             }
+             
+            if (jcp.with_concat) {
+                int aux_output_offset_concat
+                     = jcp.typesize_out * (k * jcp.oc_block
+                                        + j * jcp.oc_concat * jcp.ngroups);
+                std::cout << "offset1 = " << aux_output_offset << std::endl; 
+                std::cout << "offset2 = " << aux_output_offset_concat << std::endl; 
+               
+                addr = EVEX_compress_addr(reg_out_concat, aux_output_offset_concat);
+            }
+            
             switch (jcp.dst_dt) {
             case data_type::f32:
             case data_type::s32: vmovups(addr, zmm); break;
@@ -324,7 +335,12 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
     mov(reg_ker, ptr[param1 + GET_OFF(filt)]);
     mov(reg_kh, ptr[param1 + GET_OFF(kh_padding)]);
     mov(reg_acc_s32, ptr[param1 + GET_OFF(acc_s32)]);
-
+    
+    if (jcp.with_concat) {
+       mov(reg_out_concat, ptr[param1 + GET_OFF(dst_concat)]);
+       out_shift = jcp.typesize_out *
+                        (jcp.ur_w * jcp.oc_concat * jcp.ngroups);
+    }
     int r_pad = nstl::max(0, (jcp.ow - 1) * jcp.stride_w
                     + (jcp.kw - 1) * (jcp.dilate_w + 1)
                     - (jcp.iw + jcp.l_pad - 1));
@@ -341,6 +357,8 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
             compute_loop(jcp.ur_w, jcp.l_pad, r_pad1);
             add(reg_inp, inp_shift_pad);
             add(reg_out, out_shift);
+            add(reg_out_concat, out_shift);
+
             add(reg_acc_s32, acc_shift);
             if (jcp.ur_w_tail != 0) {
                 compute_loop(jcp.ur_w_tail, 0, r_pad);
@@ -350,6 +368,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                 compute_loop(jcp.ur_w, jcp.l_pad, 0);
                 add(reg_inp, inp_shift_pad);
                 add(reg_out, out_shift);
+                add(reg_out_concat, out_shift);
                 add(reg_acc_s32, acc_shift);
 
                 inc(reg_oi);
@@ -362,6 +381,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                     compute_loop(jcp.ur_w, 0, 0);
                     add(reg_inp, inp_shift);
                     add(reg_out, out_shift);
+                    add(reg_out_concat, out_shift);
                     add(reg_acc_s32, acc_shift);
 
                     inc(reg_oi);
@@ -373,6 +393,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                 compute_loop(jcp.ur_w, 0, r_pad1);
                 add(reg_inp, inp_shift);
                 add(reg_out, out_shift);
+                add(reg_out_concat, out_shift);
                 add(reg_acc_s32, acc_shift);
             }
             if (jcp.ur_w_tail != 0) {
@@ -460,6 +481,12 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.with_relu = with_relu;
     jcp.relu_negative_slope = relu_negative_slope;
     jcp.ur_h = 1;
+
+    jcp.with_concat = true;
+    jcp.mb_concat = jcp.mb;
+    jcp.oh_concat = jcp.oh;
+    jcp.ow_concat = jcp.ow;
+    jcp.oc_concat = jcp.oc * 2;
 
     if (!implication(with_relu, relu_negative_slope == 0.))
         return status::unimplemented;

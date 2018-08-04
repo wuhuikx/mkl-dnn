@@ -21,7 +21,7 @@
 #include "utils.hpp"
 
 #include "jit_avx512_core_u8s8s32x_convolution.hpp"
-
+#include <iostream>
 namespace mkldnn {
 namespace impl {
 namespace cpu {
@@ -38,6 +38,29 @@ using jit_conv_ker_t = void (*)(jit_conv_call_s *);
         (conf_.with_groups() \
          ? (d).blk_off((g), __VA_ARGS__) \
          : (d).blk_off(__VA_ARGS__))
+
+template <typename data_t>
+void print_func(data_t *data_ptr, std::vector<int> c, std::string str){
+     for (int mb = 0; mb < c[0]; ++mb) {
+         for (int oh = 0; oh < c[1]; ++oh) {
+             for (int ow = 0; ow < c[2]; ++ow) {
+                 std::cout << "--------------ow = " << ow << std::endl;
+                 for (int oc = 0; oc < c[3]; ++oc) {
+                     int index = mb * c[1] * c[2] * c[3] +
+                                 oh * c[2] * c[3] +
+                                 ow * c[3] +
+                                 oc;
+                     std::cout<< str << " = " << int(*(data_ptr + index)) << std::endl;
+                     if ((oc + 1)%16 == 0) {
+                         std::cout<< " " << std::endl;
+                     }
+                 }
+             }
+         }
+     }
+}
+
+
 
 template <bool with_relu, data_type_t dst_type>
 void _jit_avx512_core_u8s8s32x_convolution_fwd_t<with_relu, dst_type>::
@@ -82,6 +105,10 @@ execute_forward()
         size_t dst_h_stride = dst_d.blk_off(0, 0, 1);
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
         size_t wht_ic_stride = wht_blk_off(weights_d, 0, 0, 1);
+ 
+        //if (jcp.with_concat) {
+        size_t dst_concat_h_stride = jcp.oh_concat * jcp.ow_concat * jcp.oc_concat;
+        //} 
 
         int n{0}, gb{0}, occ{0}, oh_s{0};
         if (jcp.loop_order == loop_cgn)
@@ -111,6 +138,14 @@ execute_forward()
             auto dst_w = dst + dst_d.blk_off(n, g_oc, oh_s);
             auto src_w = src + src_d.blk_off(n, g_ic, ih_s);
             auto wht_w = weights + wht_blk_off(weights_d, gb, ocb, 0);
+            
+            auto dst_w_concat = dst_w;
+            if (jcp.with_concat) {
+               size_t dst_concat_blk_off = n * jcp.oh_concat * jcp.ow_concat * jcp.oc_concat
+                  + oh_s * jcp.ow_concat * jcp.oc_concat
+                  + g_oc; 
+               dst_w_concat = dst_concat + dst_concat_blk_off;
+            }
 
             auto scales = &oscales.scales_[jcp.is_oc_scale * g_oc];
 
@@ -118,6 +153,7 @@ execute_forward()
                 auto src_c = src_w;
                 auto dst_c = dst_w;
                 auto ws_c = ws_l;
+                auto dst_c_concat = dst_w_concat;  
 
                 int icb = icc * jcp.nb_ic_blocking;
 
@@ -141,11 +177,19 @@ execute_forward()
                     p.kh_padding = kh_padding;
                     p.scales = scales;
 
+                    //if (jcp.with_concat) {
+                    //p.dst_concat = dst_concat;
+                    p.dst_concat = dst_c_concat;
+                    //}
+
                     kernel_->jit_ker(&p);
 
                     src_c += src_h_stride * jcp.stride_h;
                     dst_c += dst_h_stride;
                     ws_c += jcp.ow * jcp.oc_block * jcp.nb_oc_blocking;
+                    //if (jcp.with_concat) {
+                       dst_c_concat += dst_concat_h_stride;
+                    //}
                 }
                 src_w += jcp.ic_block * jcp.nb_ic_blocking;
                 wht_w += wht_ic_stride * jcp.nb_ic_blocking;
@@ -162,6 +206,16 @@ execute_forward()
             else
                 assert(!"unsupported loop order");
         }
+    }
+    /*
+    std::cout << " jcp.oc = " << jcp.oc << std::endl;
+    std::vector<int> dst_size = {jcp.mb, jcp.oh, jcp.ow, jcp.oc};
+    print_func<dst_data_t>(dst, dst_size, "dst");
+    */
+    
+    if (jcp.with_concat) {
+       std::vector<int> dst_concat_size = {jcp.mb, jcp.oh_concat, jcp.ow_concat, jcp.oc_concat};
+       print_func<dst_data_t>(dst_concat, dst_concat_size, "dst_concat");
     }
 }
 

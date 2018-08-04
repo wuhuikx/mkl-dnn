@@ -162,7 +162,7 @@ TEST_P(concat_test_float, TestsConcat) {}
 TEST_P(concat_test_s8, TestsConcat) {}
 
 using fmt = memory::format;
-
+/*
 INSTANTIATE_TEST_CASE_P(TestConcat_padded, concat_test_float, ::testing::Values(
     concat_test_params{engine::kind::cpu, 1, {fmt::nChw16c, fmt::nChw16c}, fmt::nChw16c, {{4, 25, 5, 5}, {4, 45, 5, 5}}, {4, 70,  5,  5}, true, mkldnn_unimplemented},
     concat_test_params{engine::kind::cpu, 1, {fmt::nChw16c, fmt::nChw16c}, fmt::nchw,    {{4, 25, 5, 5}, {4, 45, 5, 5}}, {4, 70,  5,  5}},
@@ -232,14 +232,13 @@ INSTANTIATE_TEST_CASE_P(TestConcat, concat_test_float, ::testing::Values(
     {memory::format::nChw8c, memory::format::nChw16c}, memory::format::nChw8c,
     {{2, 8, 1, 1}, {2, 16, 1, 1}}, {2, 24, 1, 1}}
 ));
-
+*/
 INSTANTIATE_TEST_CASE_P(TestConcat, concat_test_s8, ::testing::Values(
+    //concat_test_params{engine::kind::cpu, 1,
+    //{memory::format::nhwc, memory::format::nhwc}, memory::format::nhwc,
+    //{{2, 8, 3, 4}, {2, 8, 3, 4}}, {2, 16, 3, 4}},
     concat_test_params{engine::kind::cpu, 1,
     {memory::format::nhwc, memory::format::nhwc}, memory::format::nhwc,
-    {{2, 8, 3, 4}, {2, 8, 3, 4}}, {2, 16, 3, 4}},
-    concat_test_params{engine::kind::cpu, 1,
-    {memory::format::nchw, memory::format::nchw}, memory::format::nchw,
-    {{2, 8, 3, 4}, {2, 8, 3, 4}}, {2, 16, 3, 4}}
+    {{2, 8, 3, 4}, {2, 16, 3, 4}}, {2, 24, 3, 4}}
     ));
-
 }
