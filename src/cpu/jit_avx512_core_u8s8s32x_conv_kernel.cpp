@@ -176,6 +176,14 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             }
              
             if (jcp.with_concat) {
+                switch (jcp.dst_dt) {
+                case data_type::f32:
+                case data_type::s32: vmovups(addr, zmm); break;
+                case data_type::s8: vpmovsdb(xmm, zmm); vmovups(addr, xmm); break;
+                case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
+                default: assert(!"unknown dst_dt");
+                }
+                
                 int aux_output_offset_concat
                      = jcp.typesize_out * (k * jcp.oc_block
                                         + j * jcp.oc_concat * jcp.ngroups);
@@ -183,14 +191,23 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
                 std::cout << "offset2 = " << aux_output_offset_concat << std::endl; 
                
                 addr = EVEX_compress_addr(reg_out_concat, aux_output_offset_concat);
-            }
-            
-            switch (jcp.dst_dt) {
-            case data_type::f32:
-            case data_type::s32: vmovups(addr, zmm); break;
-            case data_type::s8: vpmovsdb(xmm, zmm); vmovups(addr, xmm); break;
-            case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
-            default: assert(!"unknown dst_dt");
+                switch (jcp.dst_dt) {
+                case data_type::f32:
+                case data_type::s32: vmovups(addr, zmm); break;
+                case data_type::s8: vpmovsdb(xmm, zmm); vmovups(addr, xmm); break;
+                case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
+                default: assert(!"unknown dst_dt");
+                }
+
+            } else {
+
+                switch (jcp.dst_dt) {
+                case data_type::f32:
+                case data_type::s32: vmovups(addr, zmm); break;
+                case data_type::s8: vpmovsdb(xmm, zmm); vmovups(addr, xmm); break;
+                case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
+                default: assert(!"unknown dst_dt");
+                }
             }
         }
     }
@@ -482,11 +499,16 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.relu_negative_slope = relu_negative_slope;
     jcp.ur_h = 1;
 
-    jcp.with_concat = true;
+    jcp.with_concat = cd.src_concat_desc.format != memory_format::undef;
+    std::cout << "with_concat = " << jcp.with_concat << std::endl; 
+    
     jcp.mb_concat = jcp.mb;
     jcp.oh_concat = jcp.oh;
     jcp.ow_concat = jcp.ow;
     jcp.oc_concat = jcp.oc * 2;
+
+    //std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
+    //    dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
 
     if (!implication(with_relu, relu_negative_slope == 0.))
         return status::unimplemented;

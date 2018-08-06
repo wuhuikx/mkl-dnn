@@ -158,18 +158,28 @@ protected:
         auto c_bias_desc = with_bias ?
                 create_md({ cd.oc }, data_type_dst, p.formats.bias_format) :
                 create_md({}, data_type_dst, p.formats.bias_format);
+        
+        bool with_concat = true;
+        auto c_src_concat_desc = create_md({ cd.mb, cd.oc, cd.oh, cd.ow },
+                data_type_dst, p.formats.dst_format);
+        auto c_dst_concat_desc = create_md({ cd.mb, cd.oc * 2, cd.oh, cd.ow },
+                data_type_dst, p.formats.dst_format);
 
         auto c_src = test_memory(c_src_desc, eng);
         auto c_weights = test_memory(c_weights_desc, eng);
         auto c_bias = test_memory(c_bias_desc, eng);
-        auto c_dst = test_memory(c_dst_desc, eng);
+        auto c_dst = memory(memory::primitive_desc(c_dst_desc, eng));
+
+        auto c_src_concat = memory(memory::primitive_desc(c_src_concat_desc, eng));
+        auto c_dst_concat = memory(memory::primitive_desc(c_dst_concat_desc, eng));
+        auto c_dst_concat_fuse = memory(memory::primitive_desc(c_dst_concat_desc, eng));
 
         std::shared_ptr<data_t_dst>
-            ref_dst_data(new data_t_dst[c_dst.get_size()]);
+            ref_dst_data(new data_t_dst[c_dst.get_primitive_desc().get_size()]);
 
         // Only true for dense format
-        fill_data<data_t_dst>(c_dst.get_size() / sizeof(data_t_dst),
-                (data_t_dst *)c_dst.get().get_data_handle());
+        fill_data<data_t_dst>(c_dst.get_primitive_desc().get_size() / sizeof(data_t_dst),
+                (data_t_dst *)c_dst.get_data_handle());
         fill_data<data_t_src>(c_src.get_size() / sizeof(data_t_src),
                 (data_t_src *)c_src.get().get_data_handle());
         fill_data<data_t_wei>(c_weights.get_size() / sizeof(data_t_wei),
@@ -178,9 +188,14 @@ protected:
             fill_data<data_t_dst>(c_bias.get_size() / sizeof(data_t_dst),
                     (data_t_dst *)c_bias.get().get_data_handle());
         }
+        fill_data<data_t_dst>(c_src_concat.get_primitive_desc().get_size()/ sizeof(data_t_dst),
+                (data_t_dst *)c_src_concat.get_data_handle());
+        fill_data<data_t_dst>(c_dst_concat.get_primitive_desc().get_size()/ sizeof(data_t_dst),
+                (data_t_dst *)c_dst_concat.get_data_handle());
+        
         check_zero_tail<data_t_src>(1, c_src.get());
         check_zero_tail<data_t_wei>(1, c_weights.get());
-        check_zero_tail<data_t_dst>(1, c_dst.get());
+        check_zero_tail<data_t_dst>(1, c_dst);
 
         std::vector<int> padR = {
             right_padding(cd.ih, cd.oh, cd.kh, cd.padh, cd.strh, cd.dilh),
@@ -202,25 +217,146 @@ protected:
 
         auto conv = with_bias ?
             convolution_forward(conv_primitive_desc, c_src.get(),
-                    c_weights.get(), c_bias.get(), c_dst.get()) :
+                    c_weights.get(), c_bias.get(), c_dst) :
             convolution_forward(conv_primitive_desc, c_src.get(),
-                    c_weights.get(), c_dst.get());
+                    c_weights.get(), c_dst);
+
+        auto mpd1 = c_dst.get_primitive_desc(); 
+        auto mpd2 = c_src_concat.get_primitive_desc();
+        //auto src_memory1 = c_dst.get();
+        //auto src_memory2 = c_src_concat.get();
+        //auto mpd1 = memory::primitive_desc(c_dst_desc, eng);
+        //auto mpd2 = memory::primitive_desc(c_src_concat_desc, eng);
+        //auto src_memory1 = memory(mpd1);
+        //auto src_memory2 = memory(mpd2);
+        std::vector<memory::primitive_desc> srcs_pd{mpd1, mpd2};
+        std::vector<memory> srcs{c_dst, c_src_concat};
+        //std::vector<memory> srcs{src_memory1, src_memory2};
+        
+        auto concat_pd = concat::primitive_desc(c_dst_concat_desc, 1, srcs_pd);
+        std::vector<primitive::at> inputs{srcs[0], srcs[1]};
+        //auto dst_concat_res = memory(concat_pd.dst_primitive_desc());
+        auto con = concat(concat_pd, inputs, c_dst_concat);
 
         std::vector<primitive> pipeline;
         pipeline.push_back(conv);
+        pipeline.push_back(con);
         auto s = stream(stream::kind::lazy);
         s.submit(pipeline).wait();
+       
+        data_t_dst * dst_ptr = (data_t_dst *)c_dst.get_data_handle();
+        for (int mb = 0; mb < cd.mb; ++mb) {
+            for (int oh = 0; oh < cd.oh; ++oh) {
+                for (int ow = 0; ow < cd.ow; ++ow) {
+                    std::cout << "-----ow = " << ow << std::endl;
+                    for (int oc = 0; oc < cd.oc; ++oc) {
+                        int index = mb * cd.oh * cd.ow * cd.oc +
+                                    oh * cd.ow * cd.oc +
+                                    ow * cd.oc +
+                                    oc;
+                        std::cout << "concat_conv = " << *(dst_ptr + index) << std::endl;
+                        if ( (oc+1) % 16 == 0)
+                            std::cout << "  " << std::endl;
+                    }
+                }
+            }
+        }
 
-        auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
+        data_t_dst * src_concat_ptr = (data_t_dst *)c_src_concat.get_data_handle();
+        for (int mb = 0; mb < cd.mb; ++mb) {
+            for (int oh = 0; oh < cd.oh; ++oh) {
+                for (int ow = 0; ow < cd.ow; ++ow) {
+                    std::cout << "-----ow = " << ow << std::endl;
+                    for (int oc = 0; oc < cd.oc; ++oc) {
+                        int index = mb * cd.oh * cd.ow * cd.oc +
+                                    oh * cd.ow * cd.oc +
+                                    ow * cd.oc +
+                                    oc;
+                        std::cout << "concat_src = " << *(src_concat_ptr + index) << std::endl;
+                        if ( (oc+1) % 16 == 0)
+                            std::cout << "  " << std::endl;
+                    }
+                }
+            }
+        }
+
+        data_t_dst * dst_concat_ptr = (data_t_dst *)c_dst_concat.get_data_handle();
+        for (int mb = 0; mb < cd.mb; ++mb) {
+            for (int oh = 0; oh < cd.oh; ++oh) {
+                for (int ow = 0; ow < cd.ow; ++ow) {
+                    std::cout << "-----ow = " << ow << std::endl;
+                    for (int oc = 0; oc < cd.oc * 2; ++oc) {
+                        int index = mb * cd.oh * cd.ow * cd.oc * 2+
+                                    oh * cd.ow * cd.oc * 2+
+                                    ow * cd.oc * 2+
+                                    oc;
+                        std::cout << "concat_result = " << *(dst_concat_ptr + index) << std::endl;
+                        if ( (oc+1) % 16 == 0)
+                            std::cout << "  " << std::endl;
+                    }
+                }
+            }
+        } 
+        
+        if (with_concat) {
+            auto  conv_concat_desc = //with_bias
+                    convolution_forward::desc(aprop_kind, p.aalgorithm,
+                    c_src_desc, c_weights_desc, c_bias_desc,
+                    c_src_concat_desc,
+                    c_dst_desc,
+                    c_dst_concat_desc,
+                    { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
+                    { cd.padh, cd.padw }, padR, padding_kind::zero);
+               // : convolution_forward::desc(aprop_kind, p.aalgorithm,
+               //     c_src_desc, c_weights_desc, c_dst_desc,
+               //     { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
+               //     { cd.padh, cd.padw }, padR, padding_kind::zero);
+           
+           auto conv_concat_primitive_desc = convolution_forward::primitive_desc(
+                conv_concat_desc, attr.mkl_attr, eng);
+
+           auto conv_concat = //with_bias ?
+                convolution_forward(conv_concat_primitive_desc, c_src.get(),
+                    c_weights.get(), c_bias.get(), c_src_concat, c_dst, c_dst_concat_fuse);
+                //convolution_forward(conv_primitive_desc, c_src.get(),
+                //    c_weights.get(), c_dst);
+       
+           std::vector<primitive> pipeline_concat;
+           pipeline_concat.push_back(conv_concat);
+           auto s = stream(stream::kind::lazy);
+           s.submit(pipeline_concat).wait();
+            
+           data_t_dst * dst_concat_fuse_ptr = (data_t_dst *)c_dst_concat_fuse.get_data_handle();
+           for (int mb = 0; mb < cd.mb; ++mb) {
+                for (int oh = 0; oh < cd.oh; ++oh) {
+                    for (int ow = 0; ow < cd.ow; ++ow) {
+                        std::cout << "-----ow = " << ow << std::endl;
+                        for (int oc = 0; oc < cd.oc * 2; ++oc) {
+                            int index = mb * cd.oh * cd.ow * cd.oc * 2+
+                                    oh * cd.ow * cd.oc * 2+
+                                    ow * cd.oc * 2+
+                                    oc;
+                            std::cout << "concat_fuse = " << *(dst_concat_fuse_ptr + index) << std::endl;
+                            if ( (oc+1) % 16 == 0)
+                               std::cout << "  " << std::endl;
+                        }
+                    }
+                }
+            } 
+
+        } 
+
+       /* auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
                 ref_dst_data.get());
         compute_ref_conv_fwd<data_t_src,data_t_wei,data_t_acc,data_t_dst>(
                 cd, attr, c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
                 c_src.get(), c_weights.get(), c_bias.get(), ref_memory);
         check_zero_tail<data_t_dst>(1, ref_memory);
-
+        */
+        
         //compare_data<data_t_dst>(ref_memory, c_dst.get());
         //check_zero_tail<data_t_dst>(0, c_dst.get());
-        data_t_dst * dst_ptr = (data_t_dst *)ref_memory.get_data_handle();
+      /*  data_t_dst * dst_ptr = (data_t_dst *)ref_memory.get_data_handle();
         for (int mb = 0; mb < cd.mb; ++mb ) {
             for (int oh = 0; oh < cd.oh; ++oh) {
                 for (int ow = 0; ow < cd.ow; ++ow) {
@@ -237,7 +373,7 @@ protected:
                     }
                 }          
             }
-        }  
+        } */ 
     }
 };
 

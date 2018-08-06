@@ -69,13 +69,18 @@ execute_forward()
     auto src = reinterpret_cast<const src_data_t *>(this->input_memory(0));
     auto weights = reinterpret_cast<const wei_data_t *>(this->input_memory(1));
     auto bias = reinterpret_cast<const char *>(this->input_memory(2));
-    auto dst = reinterpret_cast<dst_data_t *>(this->memory());
+    auto dst = reinterpret_cast<dst_data_t *>(this->memory(0));
 
     const memory_desc_wrapper src_d(conf_.src_pd());
     const memory_desc_wrapper dst_d(conf_.dst_pd());
     const memory_desc_wrapper weights_d(conf_.weights_pd(0));
     const memory_desc_wrapper bias_d(conf_.weights_pd(1));
+    //memory_desc_wrapper(cdesc_().qusum_desc)
+    const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
 
+    std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
+        dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
+    
     const size_t bia_dt_size = conf_.with_bias()
         ? types::data_type_size(conf_.cdesc()->bias_desc.data_type) : 0;
 
@@ -83,6 +88,16 @@ execute_forward()
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
 
     const auto &oscales = conf_.attr()->output_scales_;
+
+    //const dst_data_t *src_concat;
+    dst_data_t *dst_concat;
+    if (jcp.with_concat) {
+       //src_concat = reinterpret_cast<const dst_data_t *>(this->input_memory(3));
+       dst_concat = reinterpret_cast<dst_data_t *>(this->memory(1));
+       std::cout << "---------dst_concat----------" << std::endl; 
+       std::cout << "dst_concat = " << *(dst_concat+1) << std::endl;
+
+    }
 
 #   pragma omp parallel
     {

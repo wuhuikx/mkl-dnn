@@ -44,6 +44,8 @@ struct _cpu_convolution_fwd_pd_t: public _convolution_fwd_pd_t<with_relu> {
         , dst_pd_(this->engine_, &this->cdesc_().dst_desc)
         , weights_pd_(this->engine_, &this->cdesc_().weights_desc)
         , bias_pd_(this->engine_, &this->cdesc_().bias_desc) {}
+        //, src_concat_pd_(this->engine_, &this->cdesc_().src_concat_desc)
+        //, dst_concat_pd_(this->engine_, &this->cdesc_().dst_concat_desc) {}
     virtual ~_cpu_convolution_fwd_pd_t() {}
 
     virtual const cpu_memory_pd_t *src_pd(int index = 0) const override
@@ -56,6 +58,12 @@ struct _cpu_convolution_fwd_pd_t: public _convolution_fwd_pd_t<with_relu> {
         return nullptr;
     }
 
+
+    //virtual const cpu_memory_pd_t *src_concat_pd(int index = 0) const override
+    //{ return index == 0 ? &src_concat_pd_ : nullptr; }
+    //virtual const cpu_memory_pd_t *dst_concat_pd(int index = 0) const override
+    //{ return index == 0 ? &dst_concat_pd_ : nullptr; }
+
     bool want_padded_bias() const {
         if (!this->with_bias()) return false;
         memory_desc_wrapper dst_d(&dst_pd_);
@@ -66,6 +74,7 @@ struct _cpu_convolution_fwd_pd_t: public _convolution_fwd_pd_t<with_relu> {
 protected:
     cpu_memory_pd_t src_pd_, dst_pd_;
     cpu_memory_pd_t weights_pd_, bias_pd_;
+    //cpu_memory_pd_t src_concat_pd_, dst_concat_pd_;
 
     inline memory_format_t src_format()
     {

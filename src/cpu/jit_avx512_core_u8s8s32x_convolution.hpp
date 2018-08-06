@@ -94,7 +94,7 @@ struct _jit_avx512_core_u8s8s32x_convolution_fwd_t : public cpu_primitive_t {
         std::cout << "oc_concat = " << conf_.jcp_.oc_concat << std::endl;
         std::cout << "size = " << sizeof(dst_data_t) << std::endl;
         //if (conf_.jcp_.with_concat) {
-           dst_concat = (dst_data_t *)malloc(dst_concat_size, 64);
+        //   dst_concat = (dst_data_t *)malloc(dst_concat_size, 64);
         //}
         
 
@@ -102,9 +102,9 @@ struct _jit_avx512_core_u8s8s32x_convolution_fwd_t : public cpu_primitive_t {
 
     ~_jit_avx512_core_u8s8s32x_convolution_fwd_t() {
         free(ws_);
-        if (conf_.jcp_.with_concat) {
-           free(dst_concat);
-        }
+        //if (conf_.jcp_.with_concat) {
+        //   free(dst_concat);
+        //}
         delete kernel_;
     };
 
@@ -126,7 +126,7 @@ private:
     size_t ws_per_thread_;
     acc_data_t *ws_;
 
-    dst_data_t *dst_concat;
+    //dst_data_t *dst_concat;
 };
 
 template <impl::data_type_t dst_type>
