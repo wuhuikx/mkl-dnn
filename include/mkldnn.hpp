@@ -1207,10 +1207,33 @@ struct convolution_forward: public primitive {
             memory::validate_dims(strides);
             memory::validate_dims(padding_l);
             memory::validate_dims(padding_r);
+            std::cout << "----------------flag1" << std::endl;
             error::wrap_c_api(mkldnn_convolution_forward_desc_init(&data,
                         mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
                         &src_desc.data, &weights_desc.data, &bias_desc.data,
                         &dst_desc.data, &strides[0], &padding_l[0], &padding_r[0],
+                        mkldnn::convert_to_c(apadding_kind)),
+                    "could not create a convolution forward descriptor");
+        }
+        desc(prop_kind aprop_kind, algorithm aalgorithm,
+                const memory::desc &src_desc,
+                const memory::desc &weights_desc,
+                const memory::desc &bias_desc,
+                const memory::desc &src_concat_desc,
+                const memory::desc &dst_desc,
+                const memory::desc &dst_concat_desc,
+                const memory::dims strides,
+                const memory::dims padding_l,
+                const memory::dims padding_r,
+                const padding_kind apadding_kind) {
+            memory::validate_dims(strides);
+            memory::validate_dims(padding_l);
+            memory::validate_dims(padding_r);
+            std::cout << "----------------flag2" << std::endl;
+            error::wrap_c_api(mkldnn_convolution_forward_with_concat_desc_init(&data,
+                        mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
+                        &src_desc.data, &weights_desc.data, &bias_desc.data, &src_concat_desc.data,
+                        &dst_desc.data, &dst_concat_desc.data, &strides[0], &padding_l[0], &padding_r[0],
                         mkldnn::convert_to_c(apadding_kind)),
                     "could not create a convolution forward descriptor");
         }
@@ -1251,6 +1274,31 @@ struct convolution_forward: public primitive {
                     mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
                         &src_desc.data, &weights_desc.data, &bias_desc.data,
                         &dst_desc.data, &strides[0], &dilates[0],
+                        &padding_l[0], &padding_r[0],
+                        mkldnn::convert_to_c(apadding_kind)),
+                    "could not create a dilated convolution forward descriptor");
+        }
+        desc(prop_kind aprop_kind, algorithm aalgorithm,
+                const memory::desc &src_desc,
+                const memory::desc &weights_desc,
+                const memory::desc &bias_desc,
+                const memory::desc &src_concat_desc,
+                const memory::desc &dst_desc,
+                const memory::desc &dst_concat_desc,
+                const memory::dims strides,
+                const memory::dims dilates,
+                const memory::dims padding_l,
+                const memory::dims padding_r,
+                const padding_kind apadding_kind) {
+            memory::validate_dims(strides);
+            memory::validate_dims(dilates);
+            memory::validate_dims(padding_l);
+            memory::validate_dims(padding_r);
+            error::wrap_c_api(
+                mkldnn_dilated_convolution_forward_with_concat_desc_init(&data,
+                    mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
+                        &src_desc.data, &weights_desc.data, &bias_desc.data, &src_concat_desc.data, 
+                        &dst_desc.data, &dst_concat_desc.data, &strides[0], &dilates[0],
                         &padding_l[0], &padding_r[0],
                         mkldnn::convert_to_c(apadding_kind)),
                     "could not create a dilated convolution forward descriptor");
@@ -1355,6 +1403,19 @@ struct convolution_forward: public primitive {
         mkldnn_primitive_at_t inputs[] = { src.data, weights.data,
                     bias.data };
         const_mkldnn_primitive_t outputs[] = { dst.get() };
+        error::wrap_c_api(mkldnn_primitive_create(&result,
+                    aprimitive_desc.get(), inputs, outputs),
+                "could not create a convolution forward bias primitive");
+        reset(result);
+    }
+
+    convolution_forward(const primitive_desc &aprimitive_desc,
+            const primitive::at &src, const primitive::at &weights,
+            const primitive::at &bias, const primitive::at &src_concat, const memory &dst, const memory &dst_concat) {
+        mkldnn_primitive_t result;
+        mkldnn_primitive_at_t inputs[] = { src.data, weights.data,
+                    bias.data, src_concat.data };
+        const_mkldnn_primitive_t outputs[] = { dst.get(), dst_concat.get() };
         error::wrap_c_api(mkldnn_primitive_create(&result,
                     aprimitive_desc.get(), inputs, outputs),
                 "could not create a convolution forward bias primitive");

@@ -30,7 +30,9 @@ namespace impl {
 status_t conv_desc_init(convolution_desc_t *conv_desc,
         prop_kind_t prop_kind, alg_kind_t alg_kind,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
-        const memory_desc_t *bias_desc, const memory_desc_t *dst_desc,
+        const memory_desc_t *bias_desc, const memory_desc_t *src_concat_desc,
+        const memory_desc_t *dst_desc,
+        const memory_desc_t *dst_concat_desc,
         const dims_t strides, const dims_t dilates,
         const dims_t padding_l, const dims_t padding_r,
         padding_kind_t padding_kind);
@@ -68,8 +70,8 @@ struct _convolution_fwd_pd_t: public primitive_desc_t {
     virtual const memory_pd_t *output_pd(int index = 0) const override
     { return index == 0 ? dst_pd() : nullptr; }
 
-    virtual int n_inputs() const override { return 2 + with_bias(); }
-    virtual int n_outputs() const override { return 1; }
+    virtual int n_inputs() const override { return 2 + with_bias() + with_concat(); }
+    virtual int n_outputs() const override { return 1 + with_concat(); }
 
     virtual status_t query(query_t what, int idx, void *result) const override
     {
@@ -126,6 +128,8 @@ struct _convolution_fwd_pd_t: public primitive_desc_t {
 
     inline bool with_bias() const
     { return !memory_desc_wrapper(cdesc_().bias_desc).is_zero(); }
+    inline bool with_concat() const
+    { return !memory_desc_wrapper(cdesc_().src_concat_desc).is_zero(); }
     inline bool with_groups() const
     { return cdesc_().weights_desc.ndims == cdesc_().src_desc.ndims + 1; }
 

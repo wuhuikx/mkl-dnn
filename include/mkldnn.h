@@ -583,6 +583,19 @@ mkldnn_status_t MKLDNN_API mkldnn_convolution_forward_desc_init(
         const mkldnn_dims_t padding_l, const mkldnn_dims_t padding_r,
         mkldnn_padding_kind_t padding_kind);
 
+mkldnn_status_t MKLDNN_API mkldnn_convolution_forward_with_concat_desc_init(
+        mkldnn_convolution_desc_t *conv_desc, mkldnn_prop_kind_t prop_kind,
+        mkldnn_alg_kind_t alg_kind, const mkldnn_memory_desc_t *src_desc,
+        const mkldnn_memory_desc_t *weights_desc,
+        const mkldnn_memory_desc_t *bias_desc,
+        const mkldnn_memory_desc_t *src_concat_desc,
+        const mkldnn_memory_desc_t *dst_desc,
+        const mkldnn_memory_desc_t *dst_concat_desc,
+        const mkldnn_dims_t strides,
+        const mkldnn_dims_t padding_l, const mkldnn_dims_t padding_r,
+        mkldnn_padding_kind_t padding_kind);
+
+
 /** Initializes a dilated convolution descriptor @p conv_desc for forward
  * propagation using @p prop_kind (possible values are #mkldnn_forward_training
  * or #mkldnn_forward_inference), @p alg_kind, memory descriptors, @p strides,
@@ -601,6 +614,18 @@ mkldnn_status_t MKLDNN_API mkldnn_dilated_convolution_forward_desc_init(
         const mkldnn_memory_desc_t *weights_desc,
         const mkldnn_memory_desc_t *bias_desc,
         const mkldnn_memory_desc_t *dst_desc, const mkldnn_dims_t strides,
+        const mkldnn_dims_t dilates, const mkldnn_dims_t padding_l,
+        const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind);
+
+mkldnn_status_t MKLDNN_API mkldnn_dilated_convolution_forward_with_concat_desc_init(
+        mkldnn_convolution_desc_t *conv_desc, mkldnn_prop_kind_t prop_kind,
+        mkldnn_alg_kind_t alg_kind, const mkldnn_memory_desc_t *src_desc,
+        const mkldnn_memory_desc_t *weights_desc,
+        const mkldnn_memory_desc_t *bias_desc,
+        const mkldnn_memory_desc_t *src_concat_desc,
+        const mkldnn_memory_desc_t *dst_desc, 
+        const mkldnn_memory_desc_t *dst_concat_desc,
+        const mkldnn_dims_t strides,
         const mkldnn_dims_t dilates, const mkldnn_dims_t padding_l,
         const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind);
 

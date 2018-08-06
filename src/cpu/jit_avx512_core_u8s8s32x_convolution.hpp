@@ -25,6 +25,7 @@
 #include "cpu_barrier.hpp"
 
 #include "jit_avx512_core_u8s8s32x_conv_kernel.hpp"
+#include <iostream>
 
 namespace mkldnn {
 namespace impl {

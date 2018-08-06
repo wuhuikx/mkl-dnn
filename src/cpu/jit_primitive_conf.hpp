@@ -255,6 +255,7 @@ struct jit_conv_call_s {
     size_t ch_blocks;
     int flags;
 
+    const void *src_concat;
     const void *dst_concat; // for fuse concat
 };
 

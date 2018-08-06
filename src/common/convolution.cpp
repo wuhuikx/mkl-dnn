@@ -33,7 +33,9 @@ namespace impl {
 status_t conv_desc_init(convolution_desc_t *conv_desc,
         prop_kind_t prop_kind, alg_kind_t alg_kind,
         const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
-        const memory_desc_t *bias_desc, const memory_desc_t *dst_desc,
+        const memory_desc_t *bias_desc, const memory_desc_t *src_concat_desc,
+        const memory_desc_t *dst_desc,
+        const memory_desc_t *dst_concat_desc,
         const dims_t strides, const dims_t dilates,
         const dims_t padding_l, const dims_t padding_r,
         padding_kind_t padding_kind) {
@@ -55,10 +57,13 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
     cd.diff_dst_desc = cd.dst_desc = zero_md();
     cd.diff_weights_desc = cd.weights_desc = zero_md();
     cd.diff_bias_desc = cd.bias_desc = zero_md();
+    cd.diff_src_concat_desc = cd.src_concat_desc = zero_md();
+    cd.diff_dst_concat_desc = cd.dst_concat_desc = zero_md();
 
     const bool is_fwd = one_of(prop_kind, forward_training, forward_inference);
     const bool with_bias = bias_desc && bias_desc->format != memory_format::undef;
     const bool with_groups = weights_desc->ndims == src_desc->ndims + 1;
+    const bool with_concat = src_concat_desc && src_concat_desc->format != memory_format::undef;
 
     (prop_kind == backward_data ? cd.diff_src_desc : cd.src_desc) = *src_desc;
     (is_fwd ? cd.dst_desc : cd.diff_dst_desc)  = *dst_desc;
@@ -67,6 +72,12 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
     if (with_bias)
         (prop_kind == backward_weights ? cd.diff_bias_desc : cd.bias_desc) =
             *bias_desc;
+    if (with_concat) {
+        (prop_kind == backward_weights ? cd.diff_src_concat_desc : cd.src_concat_desc) =
+            *src_concat_desc;
+        (prop_kind == backward_weights ? cd.diff_dst_concat_desc : cd.dst_concat_desc) =
+            *dst_concat_desc;
+    }
 
     int sp_dims = src_desc->ndims - 2;
     utils::array_copy(cd.strides, strides, sp_dims);
@@ -131,7 +142,21 @@ status_t mkldnn_convolution_forward_desc_init(convolution_desc_t *conv_desc,
     if (!one_of(prop_kind, forward_training, forward_inference))
         return invalid_arguments;
     return mkldnn::impl::conv_desc_init(conv_desc, prop_kind, alg_kind, src_desc,
-            weights_desc, bias_desc, dst_desc, strides, nullptr,
+            weights_desc, bias_desc, nullptr, dst_desc, nullptr, strides, nullptr,
+            padding_l, padding_r, padding_kind);
+}
+
+status_t mkldnn_convolution_forward_with_concat_desc_init(convolution_desc_t *conv_desc,
+        prop_kind_t prop_kind, alg_kind_t alg_kind,
+        const memory_desc_t *src_desc, const memory_desc_t *weights_desc,
+        const memory_desc_t *bias_desc, const memory_desc_t *src_concat_desc,
+        const memory_desc_t *dst_desc, const memory_desc_t *dst_concat_desc,
+        const dims_t strides, const dims_t padding_l, const dims_t padding_r,
+        padding_kind_t padding_kind) {
+    if (!one_of(prop_kind, forward_training, forward_inference))
+        return invalid_arguments;
+    return mkldnn::impl::conv_desc_init(conv_desc, prop_kind, alg_kind, src_desc,
+            weights_desc, bias_desc, src_concat_desc, dst_desc, dst_concat_desc, strides, nullptr,
             padding_l, padding_r, padding_kind);
 }
 
@@ -145,7 +170,24 @@ status_t mkldnn_dilated_convolution_forward_desc_init(
     if (!one_of(prop_kind, forward_training, forward_inference))
         return invalid_arguments;
     return mkldnn::impl::conv_desc_init(conv_desc, prop_kind, alg_kind, src_desc,
-            weights_desc, bias_desc, dst_desc, strides, dilates,
+            weights_desc, bias_desc, nullptr, dst_desc, nullptr, strides, dilates,
+            padding_l, padding_r, padding_kind);
+}
+
+status_t mkldnn_dilated_convolution_forward_with_concat_desc_init(
+        convolution_desc_t *conv_desc, prop_kind_t prop_kind,
+        alg_kind_t alg_kind, const memory_desc_t *src_desc,
+        const memory_desc_t *weights_desc, const memory_desc_t *bias_desc,
+        const memory_desc_t *src_concat_desc,
+        const memory_desc_t *dst_desc,
+        const memory_desc_t *dst_concat_desc,
+        const dims_t strides,
+        const dims_t dilates, const dims_t padding_l,
+        const dims_t padding_r, padding_kind_t padding_kind) {
+    if (!one_of(prop_kind, forward_training, forward_inference))
+        return invalid_arguments;
+    return mkldnn::impl::conv_desc_init(conv_desc, prop_kind, alg_kind, src_desc,
+            weights_desc, bias_desc, src_concat_desc, dst_desc, dst_concat_desc, strides, dilates,
             padding_l, padding_r, padding_kind);
 }
 
@@ -156,7 +198,7 @@ status_t mkldnn_convolution_backward_data_desc_init(
         const dims_t padding_l, const dims_t padding_r,
         padding_kind_t padding_kind) {
     return mkldnn::impl::conv_desc_init(conv_desc, backward_data, alg_kind, diff_src_desc,
-            weights_desc, nullptr, diff_dst_desc, strides, nullptr,
+            weights_desc, nullptr, nullptr, diff_dst_desc, nullptr, strides, nullptr,
             padding_l, padding_r, padding_kind);
 }
 
@@ -167,7 +209,7 @@ status_t mkldnn_dilated_convolution_backward_data_desc_init(
         const dims_t dilates, const dims_t padding_l, const dims_t padding_r,
         padding_kind_t padding_kind) {
     return mkldnn::impl::conv_desc_init(conv_desc, backward_data, alg_kind, diff_src_desc,
-            weights_desc, nullptr, diff_dst_desc, strides, dilates,
+            weights_desc, nullptr, nullptr, diff_dst_desc, nullptr, strides, dilates,
             padding_l, padding_r, padding_kind);
 }
 
@@ -179,7 +221,7 @@ status_t mkldnn_convolution_backward_weights_desc_init(
         const dims_t padding_l, const dims_t padding_r,
         padding_kind_t padding_kind) {
     return mkldnn::impl::conv_desc_init(conv_desc, backward_weights, alg_kind, src_desc,
-            diff_weights_desc, diff_bias_desc, diff_dst_desc, strides,
+            diff_weights_desc, diff_bias_desc, nullptr, diff_dst_desc, nullptr, strides,
             nullptr, padding_l, padding_r, padding_kind);
 }
 
@@ -191,7 +233,7 @@ status_t mkldnn_dilated_convolution_backward_weights_desc_init(
         const dims_t dilates, const dims_t padding_l, const dims_t padding_r,
         padding_kind_t padding_kind) {
     return mkldnn::impl::conv_desc_init(conv_desc, backward_weights, alg_kind, src_desc,
-            diff_weights_desc, diff_bias_desc, diff_dst_desc, strides,
+            diff_weights_desc, diff_bias_desc, nullptr, diff_dst_desc, nullptr, strides,
             dilates, padding_l, padding_r, padding_kind);
 }
 
