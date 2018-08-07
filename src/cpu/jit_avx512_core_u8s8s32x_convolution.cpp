@@ -76,10 +76,6 @@ execute_forward()
     const memory_desc_wrapper weights_d(conf_.weights_pd(0));
     const memory_desc_wrapper bias_d(conf_.weights_pd(1));
     //memory_desc_wrapper(cdesc_().qusum_desc)
-    const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
-
-    std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
-        dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
     
     const size_t bia_dt_size = conf_.with_bias()
         ? types::data_type_size(conf_.cdesc()->bias_desc.data_type) : 0;
@@ -89,13 +85,16 @@ execute_forward()
 
     const auto &oscales = conf_.attr()->output_scales_;
 
-    //const dst_data_t *src_concat;
-    dst_data_t *dst_concat;
+    const dst_data_t *src_concat = dst;
+    dst_data_t *dst_concat = dst;
     if (jcp.with_concat) {
-       //src_concat = reinterpret_cast<const dst_data_t *>(this->input_memory(3));
+       src_concat = reinterpret_cast<const dst_data_t *>(this->input_memory(3));
        dst_concat = reinterpret_cast<dst_data_t *>(this->memory(1));
-       std::cout << "---------dst_concat----------" << std::endl; 
-       std::cout << "dst_concat = " << *(dst_concat+1) << std::endl;
+       
+       //const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
+       //format_perm(dst_d.ndims(), dst_d.blocking_desc().strides[0], perm_,  iperm_);
+       //std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
+       //    dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
 
     }
 
@@ -229,6 +228,98 @@ execute_forward()
     */
     
     if (jcp.with_concat) {
+       int num_arrs = 2;
+       int max_num_arrs = 12;
+       const dst_data_t *input_ptrs[max_num_arrs];
+       dst_data_t *output_ptrs[max_num_arrs];
+       size_t nelems_to_copy[max_num_arrs];
+       strides_t is[max_num_arrs];
+       int concat_dim = jcp.concat_dim;
+       
+       const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
+       format_perm(dst_concat_d.ndims(), dst_concat_d.blocking_desc().strides[0], perm_,  iperm_);
+       int *perm = perm_, *iperm = iperm_;
+       std::cout << "perm = " << *perm << "," << *(perm +1) << "," << *(perm +2) << "," << *(perm +3) << std::endl;
+      
+       int current_concat_dim_offset = 0;
+       for (int a = 0; a < num_arrs; ++a) {
+            const memory_desc_wrapper i_d(conf_.cdesc()->src_concat_desc); 
+            const memory_desc_wrapper o_d(conf_.cdesc()->dst_concat_desc);
+           
+            const int dim = i_d.dims()[concat_dim]; 
+            //const int ndims = o_d.ndims();
+
+            int o_d_blk_off = current_concat_dim_offset;
+            std::cout << "o_d_blk_off" << o_d_blk_off  << std::endl;
+            //dims_t dims, offsets = {};
+            //utils::array_copy(dims, dst_pd_.desc()->dims, ndims);
+            //dims[concat_dim_] = dim;
+            //offsets[concat_dim_] = current_concat_dim_offset;
+            current_concat_dim_offset += dim;
+
+
+            input_ptrs[a] =  src_concat + i_d.blk_off(0);
+            output_ptrs[a] = dst_concat + o_d_blk_off;//o_d.blk_off(0);
+            
+
+            nelems_to_copy[a] = nelems_to_concat(concat_dim, perm, iperm, i_d);
+            std::cout << "concat_dim = " << concat_dim << std::endl;
+            std::cout << "perm[concat_dim = " << perm[concat_dim] << std::endl;
+
+            for (int i = 0; i < perm[concat_dim]; i++) {
+                 is[a][i] = size_t(i_d.blocking_desc().strides[0][iperm[i]]);
+                 std::cout << "is = " << is[a][i] << std::endl;
+
+            }
+            std::cout << input_ptrs[a] << std::endl;
+            std::cout << output_ptrs[a] << std::endl;
+            std::cout <<nelems_to_copy[a] << std::endl;
+       }
+        
+       const memory_desc_wrapper o_d(conf_.cdesc()->dst_concat_desc);
+       auto &blk = o_d.blocking_desc();
+       strides_t os = { 0 };
+       for (int i = 0; i < perm[concat_dim]; i++)
+           os[i] = o_d.blocking_desc().strides[0][iperm[i]];
+       dims_t phys_dims;
+       for (size_t i = 0; i < sizeof(phys_dims)/sizeof(phys_dims[0]); i++)
+            phys_dims[i] = (i < (size_t)perm[concat_dim]) ?
+                  o_d.dims()[iperm[i]] / blk.block_dims[iperm[i]] : 1;
+
+       switch (perm[concat_dim]) {
+       case (0): {
+            for (int a = 1; a < num_arrs; ++a) {
+                const dst_data_t *i = &input_ptrs[a][0];
+                dst_data_t *o = &output_ptrs[a][0];
+#               pragma omp parallel for
+                for (ptrdiff_t e = 0; e < (ptrdiff_t)nelems_to_copy[a]; ++e)
+                    o[e] = i[e];
+            }
+            break;
+       }
+       default: {
+#           pragma omp parallel for collapse(6) schedule(static)
+            for (int n0 = 0; n0 < phys_dims[0]; ++n0)
+                for (int n1 = 0; n1 < phys_dims[1]; ++n1)
+                    for (int n2 = 0; n2 < phys_dims[2]; ++n2)
+                        for (int n3 = 0; n3 < phys_dims[3]; ++n3)
+                            for (int n4 = 0; n4 < phys_dims[4]; ++n4)
+                                for (int a = 1; a < num_arrs; ++a) {
+                                    size_t in_off = is[a][0] * n0 + is[a][1] * n1+ is[a][2] * n2 + is[a][3] * n3 + is[a][4] * n4;
+                                    size_t out_off = os[0] * n0 + os[1] * n1 + os[2] * n2 + os[3] * n3 + os[4] * n4;
+                                    const dst_data_t *i = &input_ptrs[a][in_off];
+                                    dst_data_t *o = &output_ptrs[a][out_off];
+                                    PRAGMA_OMP_SIMD()
+                                    for (size_t e = 0; e < nelems_to_copy[a]; ++e)
+                                        o[e] = i[e];
+                                }
+       }
+       }
+       //strides_t os = { 0 };
+       //for (int i = 0; i < perm[concat_dim]; i++)
+       //     os[i] = o_d.blocking_desc().strides[0][iperm[i]];
+
+       
        std::vector<int> dst_concat_size = {jcp.mb, jcp.oh_concat, jcp.ow_concat, jcp.oc_concat};
        print_func<dst_data_t>(dst_concat, dst_concat_size, "dst_concat");
     }

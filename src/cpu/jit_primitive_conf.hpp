@@ -102,6 +102,7 @@ struct jit_conv_conf_t {
 
     // fuse concat
     bool with_concat;
+    int concat_dim;
     int mb_concat, oh_concat, ow_concat, oc_concat; 
 };
 

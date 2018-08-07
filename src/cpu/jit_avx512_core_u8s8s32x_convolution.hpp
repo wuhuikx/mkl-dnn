@@ -93,9 +93,11 @@ struct _jit_avx512_core_u8s8s32x_convolution_fwd_t : public cpu_primitive_t {
         std::cout << "ow_concat = " << conf_.jcp_.ow_concat << std::endl;
         std::cout << "oc_concat = " << conf_.jcp_.oc_concat << std::endl;
         std::cout << "size = " << sizeof(dst_data_t) << std::endl;
-        //if (conf_.jcp_.with_concat) {
-        //   dst_concat = (dst_data_t *)malloc(dst_concat_size, 64);
-        //}
+        if (conf_.jcp_.with_concat) {
+           //dst_concat = (dst_data_t *)malloc(dst_concat_size, 64);
+           //const memory_desc_wrapper dst_d(conf_.dst_pd());
+           //format_perm(dst_d.ndims(), dst_d.blocking_desc().strides[0], perm_,  iperm_);
+        }
         
 
     }
@@ -125,6 +127,64 @@ private:
     jit_avx512_core_u8s8s32x_fwd_kernel *kernel_;
     size_t ws_per_thread_;
     acc_data_t *ws_;
+
+
+    dims_t perm_;
+    dims_t iperm_;
+
+    static void format_perm(
+               const int ndims, const stride_t *strides, int *perm, int *iperm) {
+         bool swapped;
+         strides_t strides_tmp;
+         utils::array_copy(strides_tmp, strides, ndims);
+         for (int i = 0; i < ndims; i++)
+             iperm[i] = i;
+         for (int i = 0; i < ndims - 1; i++) {
+             swapped = false;
+             for (int j = 0; j < ndims - i - 1; j++) {
+                 if (strides_tmp[j] < strides_tmp[j + 1]) {
+                    nstl::swap(strides_tmp[j], strides_tmp[j + 1]);
+                    nstl::swap(iperm[j], iperm[j + 1]);
+                    swapped = true;
+                 }
+             }
+             if (swapped == false)
+                break;
+         }
+         for (int i = 0; i < ndims; i++)
+              perm[iperm[i]] = i;
+    }
+
+    static size_t nelems_to_concat(const int concat_dim, int *perm, int *iperm,
+                   const memory_desc_wrapper &data_d) {
+        const int ndims = data_d.ndims();
+        auto &blk = data_d.blocking_desc();
+        int nelems = 1;
+        for (int i = perm[concat_dim]; i < ndims; i++) {
+             nelems *= data_d.dims()[iperm[i]] / blk.block_dims[iperm[i]];
+        }
+        for (int i = 0; i < ndims; i++) {
+             nelems *= blk.block_dims[i];
+        }
+        return nelems;
+    }
+
+    static size_t _size_to_concat(const int concat_dim, int *perm, int *iperm,
+                  const memory_desc_wrapper &data_d) {
+        size_t max_size = 0;
+        auto &blk = data_d.blocking_desc();
+        for (int d = perm[concat_dim]; d < data_d.ndims(); ++d) {
+            auto block = blk.block_dims[iperm[d]];
+            max_size = nstl::max(max_size,
+                    size_t(blk.padding_dims[iperm[d]] / block)
+                            * blk.strides[0][iperm[d]]);
+            if (block > 1)
+               max_size = nstl::max(max_size,
+                    size_t(block * blk.strides[1][iperm[d]]));
+            }
+        return max_size;
+    }
+
 
     //dst_data_t *dst_concat;
 };

@@ -501,14 +501,23 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
 
     jcp.with_concat = cd.src_concat_desc.format != memory_format::undef;
     std::cout << "with_concat = " << jcp.with_concat << std::endl; 
-    
-    jcp.mb_concat = jcp.mb;
-    jcp.oh_concat = jcp.oh;
-    jcp.ow_concat = jcp.ow;
-    jcp.oc_concat = jcp.oc * 2;
 
-    //std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
-    //    dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
+    if (jcp.with_concat) {
+       const memory_desc_wrapper dst_concat_d(cd.dst_concat_desc);
+    
+       jcp.mb_concat = dst_concat_d.dims()[0];
+       jcp.oh_concat = dst_concat_d.dims()[2];
+       jcp.ow_concat = dst_concat_d.dims()[3];
+       jcp.oc_concat = dst_concat_d.dims()[1] / jcp.ngroups;
+       jcp.concat_dim = 1;
+       /*jcp.mb_concat = jcp.mb;
+       jcp.oh_concat = jcp.oh;
+       jcp.ow_concat = jcp.ow;
+       jcp.oc_concat = jcp.oc * 2;*/
+
+       //std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
+       //    dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
+    }
 
     if (!implication(with_relu, relu_negative_slope == 0.))
         return status::unimplemented;

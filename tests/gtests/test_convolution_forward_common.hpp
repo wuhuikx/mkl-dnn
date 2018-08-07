@@ -162,7 +162,9 @@ protected:
         bool with_concat = true;
         auto c_src_concat_desc = create_md({ cd.mb, cd.oc, cd.oh, cd.ow },
                 data_type_dst, p.formats.dst_format);
-        auto c_dst_concat_desc = create_md({ cd.mb, cd.oc * 2, cd.oh, cd.ow },
+
+        int mb_concat = cd.mb, oc_concat = cd.oc*2, oh_concat = cd.oh, ow_concat = cd.ow;
+        auto c_dst_concat_desc = create_md({ mb_concat, oc_concat, oh_concat, ow_concat },
                 data_type_dst, p.formats.dst_format);
 
         auto c_src = test_memory(c_src_desc, eng);
@@ -327,14 +329,14 @@ protected:
            s.submit(pipeline_concat).wait();
             
            data_t_dst * dst_concat_fuse_ptr = (data_t_dst *)c_dst_concat_fuse.get_data_handle();
-           for (int mb = 0; mb < cd.mb; ++mb) {
-                for (int oh = 0; oh < cd.oh; ++oh) {
-                    for (int ow = 0; ow < cd.ow; ++ow) {
+           for (int mb = 0; mb < mb_concat; ++mb) {
+                for (int oh = 0; oh < oh_concat; ++oh) {
+                    for (int ow = 0; ow < ow_concat; ++ow) {
                         std::cout << "-----ow = " << ow << std::endl;
-                        for (int oc = 0; oc < cd.oc * 2; ++oc) {
-                            int index = mb * cd.oh * cd.ow * cd.oc * 2+
-                                    oh * cd.ow * cd.oc * 2+
-                                    ow * cd.oc * 2+
+                        for (int oc = 0; oc < oc_concat; ++oc) {
+                            int index = mb * oh_concat * ow_concat * oc_concat+
+                                    oh * ow_concat * oc_concat +
+                                    ow * oc_concat +
                                     oc;
                             std::cout << "concat_fuse = " << *(dst_concat_fuse_ptr + index) << std::endl;
                             if ( (oc+1) % 16 == 0)
@@ -346,15 +348,15 @@ protected:
 
         } 
 
-       /* auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
-                ref_dst_data.get());
-        compute_ref_conv_fwd<data_t_src,data_t_wei,data_t_acc,data_t_dst>(
-                cd, attr, c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
-                c_src.get(), c_weights.get(), c_bias.get(), ref_memory);
-        check_zero_tail<data_t_dst>(1, ref_memory);
-        */
+       // auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
+       //         ref_dst_data.get());
+       // compute_ref_conv_fwd<data_t_src,data_t_wei,data_t_acc,data_t_dst>(
+       //         cd, attr, c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
+       //         c_src.get(), c_weights.get(), c_bias.get(), ref_memory);
+        //check_zero_tail<data_t_dst>(1, ref_memory);
         
-        //compare_data<data_t_dst>(ref_memory, c_dst.get());
+        
+        compare_data<data_t_dst>(c_dst_concat, c_dst_concat_fuse);
         //check_zero_tail<data_t_dst>(0, c_dst.get());
       /*  data_t_dst * dst_ptr = (data_t_dst *)ref_memory.get_data_handle();
         for (int mb = 0; mb < cd.mb; ++mb ) {

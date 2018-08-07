@@ -239,6 +239,6 @@ INSTANTIATE_TEST_CASE_P(TestConcat, concat_test_s8, ::testing::Values(
     //{{2, 8, 3, 4}, {2, 8, 3, 4}}, {2, 16, 3, 4}},
     concat_test_params{engine::kind::cpu, 1,
     {memory::format::nhwc, memory::format::nhwc}, memory::format::nhwc,
-    {{2, 8, 3, 4}, {2, 16, 3, 4}}, {2, 24, 3, 4}}
+    {{1, 16, 3, 3}, {1, 16, 3, 3}}, {1, 32, 3, 3}}
     ));
 }
