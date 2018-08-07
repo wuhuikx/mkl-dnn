@@ -512,7 +512,9 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
        jcp.oh_concat = dst_concat_d.dims()[2];
        jcp.ow_concat = dst_concat_d.dims()[3];
        jcp.oc_concat = dst_concat_d.dims()[1] / jcp.ngroups;
-       jcp.concat_dim = 3;
+       jcp.concat_dim = cd.concat_dim[0];
+       std::cout << "concat_dim = " << jcp.concat_dim << std::endl; 
+
        /*jcp.mb_concat = jcp.mb;
        jcp.oh_concat = jcp.oh;
        jcp.ow_concat = jcp.ow;

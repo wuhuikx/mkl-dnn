@@ -33,6 +33,7 @@ status_t conv_desc_init(convolution_desc_t *conv_desc,
         const memory_desc_t *bias_desc, const memory_desc_t *src_concat_desc,
         const memory_desc_t *dst_desc,
         const memory_desc_t *dst_concat_desc,
+        const dims_t concat_dim,
         const dims_t strides, const dims_t dilates,
         const dims_t padding_l, const dims_t padding_r,
         padding_kind_t padding_kind);

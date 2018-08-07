@@ -160,12 +160,22 @@ protected:
                 create_md({}, data_type_dst, p.formats.bias_format);
         
         bool with_concat = true;
-        int mb_src = cd.mb, oc_src = cd.oc, oh_src = cd.oh, ow_src = 10;
+        int concat_dim = 0;
+        int mb_src = cd.mb, oc_src = cd.oc, oh_src = cd.oh, ow_src = cd.ow;
+        int mb_concat = cd.mb, oc_concat = cd.oc, oh_concat = cd.oh, ow_concat = cd.ow;
+       
+        srand((unsigned)time(NULL));
+        int rand_num = rand() % 100;  
+        //printf( "%d\n", rand_num);
+        switch(concat_dim){
+            case 0: mb_src = rand_num; mb_concat += mb_src; break;
+            case 1: oc_src = rand_num; oc_concat += oc_src; break;
+            case 2: oh_src = rand_num; oh_concat += oh_src; break;
+            case 3: ow_src = rand_num; ow_concat += ow_src; break;
+        }
+        
         auto c_src_concat_desc = create_md({ mb_src, oc_src, oh_src, ow_src },
                 data_type_dst, p.formats.dst_format);
-
-        int concat_dim = 3;
-        int mb_concat = cd.mb, oc_concat = cd.oc, oh_concat = cd.oh, ow_concat = cd.ow + ow_src;
         auto c_dst_concat_desc = create_md({ mb_concat, oc_concat, oh_concat, ow_concat },
                 data_type_dst, p.formats.dst_format);
 
@@ -309,6 +319,7 @@ protected:
                     c_src_concat_desc,
                     c_dst_desc,
                     c_dst_concat_desc,
+                    { concat_dim },
                     { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
                     { cd.padh, cd.padw }, padR, padding_kind::zero);
                // : convolution_forward::desc(aprop_kind, p.aalgorithm,

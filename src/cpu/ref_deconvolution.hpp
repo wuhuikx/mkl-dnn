@@ -127,7 +127,7 @@ static status_t conv_descr_create(const deconvolution_desc_t *dd,
             src_md, &(c_weights_d),
             ( (utils::one_of(dd->prop_kind, backward, backward_data))?
             (&(dd->bias_desc)): nullptr ), nullptr,
-            dst_md, nullptr, dd->strides, nullptr,
+            dst_md, nullptr, nullptr, dd->strides, nullptr,
             dd->padding[0], dd->padding[1], dd->padding_kind);
 }
 

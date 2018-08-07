@@ -591,8 +591,10 @@ mkldnn_status_t MKLDNN_API mkldnn_convolution_forward_with_concat_desc_init(
         const mkldnn_memory_desc_t *src_concat_desc,
         const mkldnn_memory_desc_t *dst_desc,
         const mkldnn_memory_desc_t *dst_concat_desc,
+        const mkldnn_dims_t concat_dim,
         const mkldnn_dims_t strides,
-        const mkldnn_dims_t padding_l, const mkldnn_dims_t padding_r,
+        const mkldnn_dims_t padding_l,
+        const mkldnn_dims_t padding_r,
         mkldnn_padding_kind_t padding_kind);
 
 
@@ -625,8 +627,10 @@ mkldnn_status_t MKLDNN_API mkldnn_dilated_convolution_forward_with_concat_desc_i
         const mkldnn_memory_desc_t *src_concat_desc,
         const mkldnn_memory_desc_t *dst_desc, 
         const mkldnn_memory_desc_t *dst_concat_desc,
+        const mkldnn_dims_t concat_dim,
         const mkldnn_dims_t strides,
-        const mkldnn_dims_t dilates, const mkldnn_dims_t padding_l,
+        const mkldnn_dims_t dilates, 
+        const mkldnn_dims_t padding_l,
         const mkldnn_dims_t padding_r, mkldnn_padding_kind_t padding_kind);
 
 /** Initializes a convolution descriptor @p conv_desc for backward propagation

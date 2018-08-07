@@ -629,6 +629,7 @@ typedef struct {
     mkldnn_memory_desc_t diff_src_concat_desc;
     mkldnn_memory_desc_t dst_concat_desc;
     mkldnn_memory_desc_t diff_dst_concat_desc;
+    mkldnn_dims_t concat_dim;
 
     /** Destination memory descriptor. */
     mkldnn_memory_desc_t dst_desc;
