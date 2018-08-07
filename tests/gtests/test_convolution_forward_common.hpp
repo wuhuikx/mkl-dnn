@@ -27,6 +27,27 @@
 
 namespace mkldnn {
 
+template <typename data_t>
+void print_func(data_t *data_ptr, std::vector<int> c, std::string str){
+     for (int mb = 0; mb < c[0]; ++mb) {
+         for (int oh = 0; oh < c[1]; ++oh) {
+             for (int ow = 0; ow < c[2]; ++ow) {
+                 std::cout << "--------------ow = " << ow << std::endl;
+                 for (int oc = 0; oc < c[3]; ++oc) {
+                     int index = mb * c[1] * c[2] * c[3] +
+                                 oh * c[2] * c[3] +
+                                 ow * c[3] +
+                                 oc;
+                     std::cout<< str << " = " << int(*(data_ptr + index)) << std::endl;
+                     if ((oc + 1)%16 == 0) {
+                         std::cout<< " " << std::endl;
+                     }
+                 }
+             }
+        }
+    }
+}
+
 template <typename data_t_src, typename data_t_wei,
           typename data_t_acc, typename data_t_dst>
 void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
@@ -146,6 +167,7 @@ protected:
         auto aprop_kind = prop_kind::forward;
         bool with_bias = p.formats.bias_format != memory::format::format_undef;
 
+        // convolution memory desc
         auto c_src_desc = create_md({ cd.mb, cd.ic, cd.ih, cd.iw },
             data_type_src, p.formats.src_format);
         auto c_weights_desc = cd.ng > 1 ?
@@ -158,15 +180,20 @@ protected:
         auto c_bias_desc = with_bias ?
                 create_md({ cd.oc }, data_type_dst, p.formats.bias_format) :
                 create_md({}, data_type_dst, p.formats.bias_format);
-        
+       
+        /* This code use to concat array1 and array2 */
+        /* Array1 is the convolution result (array1 denoted as c_dst_desc, c_dst)*/ 
+        /* Array2 will write after array1, (array2 denoted as c_src_concat_desc, c_src_concat)*/
+        /* The concat result is denoted as (c_dst_concat_desc, c_dst_concat)*/
+        /* c_dst_concat = c_dst + c_src_concat*/
+
         bool with_concat = true;
-        int concat_dim = 0;
-        int mb_src = cd.mb, oc_src = cd.oc, oh_src = cd.oh, ow_src = cd.ow;
-        int mb_concat = cd.mb, oc_concat = cd.oc, oh_concat = cd.oh, ow_concat = cd.ow;
+        int concat_dim = 3; // concat_dim [0, 1, 2, 3] for [n, c, h, w]
+        int mb_src = cd.mb, oc_src = cd.oc, oh_src = cd.oh, ow_src = cd.ow; // for array1
+        int mb_concat = cd.mb, oc_concat = cd.oc, oh_concat = cd.oh, ow_concat = cd.ow; // for concat result
        
         srand((unsigned)time(NULL));
         int rand_num = rand() % 100;  
-        //printf( "%d\n", rand_num);
         switch(concat_dim){
             case 0: mb_src = rand_num; mb_concat += mb_src; break;
             case 1: oc_src = rand_num; oc_concat += oc_src; break;
@@ -174,23 +201,24 @@ protected:
             case 3: ow_src = rand_num; ow_concat += ow_src; break;
         }
         
+        // concat memory desc
         auto c_src_concat_desc = create_md({ mb_src, oc_src, oh_src, ow_src },
                 data_type_dst, p.formats.dst_format);
         auto c_dst_concat_desc = create_md({ mb_concat, oc_concat, oh_concat, ow_concat },
                 data_type_dst, p.formats.dst_format);
 
+        // convolution memory
         auto c_src = test_memory(c_src_desc, eng);
         auto c_weights = test_memory(c_weights_desc, eng);
         auto c_bias = test_memory(c_bias_desc, eng);
         auto c_dst = memory(memory::primitive_desc(c_dst_desc, eng));
 
+        // concat memory
         auto c_src_concat = memory(memory::primitive_desc(c_src_concat_desc, eng));
         auto c_dst_concat = memory(memory::primitive_desc(c_dst_concat_desc, eng));
         auto c_dst_concat_fuse = memory(memory::primitive_desc(c_dst_concat_desc, eng));
 
-        std::shared_ptr<data_t_dst>
-            ref_dst_data(new data_t_dst[c_dst.get_primitive_desc().get_size()]);
-
+        // fill data for convolution and concat array1
         // Only true for dense format
         fill_data<data_t_dst>(c_dst.get_primitive_desc().get_size() / sizeof(data_t_dst),
                 (data_t_dst *)c_dst.get_data_handle());
@@ -237,83 +265,23 @@ protected:
 
         auto mpd1 = c_dst.get_primitive_desc(); 
         auto mpd2 = c_src_concat.get_primitive_desc();
-        //auto src_memory1 = c_dst.get();
-        //auto src_memory2 = c_src_concat.get();
-        //auto mpd1 = memory::primitive_desc(c_dst_desc, eng);
-        //auto mpd2 = memory::primitive_desc(c_src_concat_desc, eng);
-        //auto src_memory1 = memory(mpd1);
-        //auto src_memory2 = memory(mpd2);
         std::vector<memory::primitive_desc> srcs_pd{mpd1, mpd2};
         std::vector<memory> srcs{c_dst, c_src_concat};
-        //std::vector<memory> srcs{src_memory1, src_memory2};
         
         auto concat_pd = concat::primitive_desc(c_dst_concat_desc, concat_dim, srcs_pd);
         std::vector<primitive::at> inputs{srcs[0], srcs[1]};
-        //auto dst_concat_res = memory(concat_pd.dst_primitive_desc());
         auto con = concat(concat_pd, inputs, c_dst_concat);
 
+        // compute conv+concat reference by mkl-dnn
         std::vector<primitive> pipeline;
         pipeline.push_back(conv);
         pipeline.push_back(con);
         auto s = stream(stream::kind::lazy);
         s.submit(pipeline).wait();
        
-        data_t_dst * dst_ptr = (data_t_dst *)c_dst.get_data_handle();
-        for (int mb = 0; mb < cd.mb; ++mb) {
-            for (int oh = 0; oh < cd.oh; ++oh) {
-                for (int ow = 0; ow < cd.ow; ++ow) {
-                    std::cout << "-----ow = " << ow << std::endl;
-                    for (int oc = 0; oc < cd.oc; ++oc) {
-                        int index = mb * cd.oh * cd.ow * cd.oc +
-                                    oh * cd.ow * cd.oc +
-                                    ow * cd.oc +
-                                    oc;
-                        std::cout << "concat_conv = " << *(dst_ptr + index) << std::endl;
-                        if ( (oc+1) % 16 == 0)
-                            std::cout << "  " << std::endl;
-                    }
-                }
-            }
-        }
-
-        data_t_dst * src_concat_ptr = (data_t_dst *)c_src_concat.get_data_handle();
-        for (int mb = 0; mb < cd.mb; ++mb) {
-            for (int oh = 0; oh < cd.oh; ++oh) {
-                for (int ow = 0; ow < cd.ow; ++ow) {
-                    std::cout << "-----ow = " << ow << std::endl;
-                    for (int oc = 0; oc < cd.oc; ++oc) {
-                        int index = mb * cd.oh * cd.ow * cd.oc +
-                                    oh * cd.ow * cd.oc +
-                                    ow * cd.oc +
-                                    oc;
-                        std::cout << "concat_src = " << *(src_concat_ptr + index) << std::endl;
-                        if ( (oc+1) % 16 == 0)
-                            std::cout << "  " << std::endl;
-                    }
-                }
-            }
-        }
-
-        data_t_dst * dst_concat_ptr = (data_t_dst *)c_dst_concat.get_data_handle();
-        for (int mb = 0; mb < cd.mb; ++mb) {
-            for (int oh = 0; oh < cd.oh; ++oh) {
-                for (int ow = 0; ow < cd.ow; ++ow) {
-                    std::cout << "-----ow = " << ow << std::endl;
-                    for (int oc = 0; oc < cd.oc * 2; ++oc) {
-                        int index = mb * cd.oh * cd.ow * cd.oc * 2+
-                                    oh * cd.ow * cd.oc * 2+
-                                    ow * cd.oc * 2+
-                                    oc;
-                        std::cout << "concat_result = " << *(dst_concat_ptr + index) << std::endl;
-                        if ( (oc+1) % 16 == 0)
-                            std::cout << "  " << std::endl;
-                    }
-                }
-            }
-        } 
-        
+        // create conv_concat fuse primitive and submit
         if (with_concat) {
-            auto  conv_concat_desc = //with_bias
+            auto  conv_concat_desc = 
                     convolution_forward::desc(aprop_kind, p.aalgorithm,
                     c_src_desc, c_weights_desc, c_bias_desc,
                     c_src_concat_desc,
@@ -322,73 +290,40 @@ protected:
                     { concat_dim },
                     { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
                     { cd.padh, cd.padw }, padR, padding_kind::zero);
-               // : convolution_forward::desc(aprop_kind, p.aalgorithm,
-               //     c_src_desc, c_weights_desc, c_dst_desc,
-               //     { cd.strh, cd.strw }, { cd.dilh, cd.dilw },
-               //     { cd.padh, cd.padw }, padR, padding_kind::zero);
            
            auto conv_concat_primitive_desc = convolution_forward::primitive_desc(
                 conv_concat_desc, attr.mkl_attr, eng);
 
-           auto conv_concat = //with_bias ?
+           auto conv_concat = 
                 convolution_forward(conv_concat_primitive_desc, c_src.get(),
                     c_weights.get(), c_bias.get(), c_src_concat, c_dst, c_dst_concat_fuse);
-                //convolution_forward(conv_primitive_desc, c_src.get(),
-                //    c_weights.get(), c_dst);
        
            std::vector<primitive> pipeline_concat;
            pipeline_concat.push_back(conv_concat);
            auto s = stream(stream::kind::lazy);
            s.submit(pipeline_concat).wait();
-           
-           data_t_dst * dst_concat_fuse_ptr = (data_t_dst *)c_dst_concat_fuse.get_data_handle();
-           for (int mb = 0; mb < mb_concat; ++mb) {
-                for (int oh = 0; oh < oh_concat; ++oh) {
-                    for (int ow = 0; ow < ow_concat; ++ow) {
-                        std::cout << "-----ow = " << ow << std::endl;
-                        for (int oc = 0; oc < oc_concat; ++oc) {
-                            int index = mb * oh_concat * ow_concat * oc_concat+
-                                    oh * ow_concat * oc_concat +
-                                    ow * oc_concat +
-                                    oc;
-                            std::cout << "concat_fuse = " << *(dst_concat_fuse_ptr + index) << std::endl;
-                            if ( (oc+1) % 16 == 0)
-                               std::cout << "  " << std::endl;
-                        }
-                    }
-                }
-            }
-
         } 
-
-       // auto ref_memory = memory(memory::primitive_desc(c_dst_desc, eng),
-       //         ref_dst_data.get());
-       // compute_ref_conv_fwd<data_t_src,data_t_wei,data_t_acc,data_t_dst>(
-       //         cd, attr, c_src_desc, c_weights_desc, c_bias_desc, c_dst_desc,
-       //         c_src.get(), c_weights.get(), c_bias.get(), ref_memory);
-        //check_zero_tail<data_t_dst>(1, ref_memory);
         
-        
+        // compare reference non-fuse result with conv_concat fuse result 
         compare_data<data_t_dst>(c_dst_concat, c_dst_concat_fuse);
-        //check_zero_tail<data_t_dst>(0, c_dst.get());
-      /*  data_t_dst * dst_ptr = (data_t_dst *)ref_memory.get_data_handle();
-        for (int mb = 0; mb < cd.mb; ++mb ) {
-            for (int oh = 0; oh < cd.oh; ++oh) {
-                for (int ow = 0; ow < cd.ow; ++ow) {
-                    std::cout << "-------ow = " << ow << std::endl;
-                    for (int oc = 0; oc < cd.oc; ++oc) {
-                         int idx = mb * cd.oh * cd.ow * cd.oc +
-                                  oh * cd.ow * cd.oc +
-                                  ow * cd.oc +
-                                  oc;
-                         std::cout << "dst = " << *(dst_ptr + idx) << std::endl;
-                         if ( (oc + 1) % 16 == 0) {
-                             std::cout << "  " << std::endl;
-                         }
-                    }
-                }          
-            }
-        } */ 
+ 
+        // print and checkout result 
+        /*
+        std::vector<int> dst_size{cd.mb, cd.oh, cd.ow, cd.oc};
+        data_t_dst * dst_ptr = (data_t_dst *)c_dst.get_data_handle();
+        print_func<data_t_dst>(dst_ptr, dst_size, "array1");
+
+        std::vector<int> src_concat_size{mb_src, oh_src, ow_src, oc_src};
+        data_t_dst * src_concat_ptr = (data_t_dst *)c_src_concat.get_data_handle();
+        print_func<data_t_dst>(src_concat_ptr, src_concat_size, "array2");
+
+        std::vector<int> dst_concat_size{mb_concat, oh_concat, ow_concat, oc_concat};
+        data_t_dst * dst_concat_ptr = (data_t_dst *)c_dst_concat.get_data_handle();
+        print_func<data_t_dst>(dst_concat_ptr, dst_concat_size, "non-fuse result");
+        */
+
+        //data_t_dst * dst_concat_fuse_ptr = (data_t_dst *)c_dst_concat_fuse.get_data_handle();
+        //print_func<data_t_dst>(dst_concat_fuse_ptr, dst_concat_size, "fuse result");
     }
 };
 

@@ -176,19 +176,9 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::store_output(int ur_w)
             }
              
             if (jcp.with_concat) {
-                switch (jcp.dst_dt) {
-                case data_type::f32:
-                case data_type::s32: vmovups(addr, zmm); break;
-                case data_type::s8: vpmovsdb(xmm, zmm); vmovups(addr, xmm); break;
-                case data_type::u8: vpmovusdb(xmm, zmm); vmovups(addr, xmm); break;
-                default: assert(!"unknown dst_dt");
-                }
-                
                 int aux_output_offset_concat
                      = jcp.typesize_out * (k * jcp.oc_block
                                         + j * jcp.oc_concat * jcp.ngroups);
-                std::cout << "offset1 = " << aux_output_offset << std::endl; 
-                std::cout << "offset2 = " << aux_output_offset_concat << std::endl; 
                
                 addr = EVEX_compress_addr(reg_out_concat, aux_output_offset_concat);
                 switch (jcp.dst_dt) {
@@ -340,7 +330,6 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
     int acc_shift = jcp.typesize_acc *
                         (jcp.ur_w * jcp.oc_block * jcp.nb_oc_blocking);
 
-    std::cout << "---------generate1" << std::endl;
     preamble();
 
     xor_(reg_scratch, reg_scratch);
@@ -468,8 +457,7 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     const memory_desc_wrapper weights_d(&weights_pd);
     const memory_desc_wrapper dst_d(&dst_pd);
     const memory_desc_wrapper bias_d(&bias_pd);
- 
-    std::cout << "init_conf1-----------------" << std::endl;
+    
     const int regs = 28;
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
 
@@ -503,25 +491,13 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     jcp.ur_h = 1;
 
     jcp.with_concat = cd.src_concat_desc.format != memory_format::undef;
-    std::cout << "with_concat = " << jcp.with_concat << std::endl; 
-
     if (jcp.with_concat) {
        const memory_desc_wrapper dst_concat_d(cd.dst_concat_desc);
-    
        jcp.mb_concat = dst_concat_d.dims()[0];
        jcp.oh_concat = dst_concat_d.dims()[2];
        jcp.ow_concat = dst_concat_d.dims()[3];
        jcp.oc_concat = dst_concat_d.dims()[1] / jcp.ngroups;
        jcp.concat_dim = cd.concat_dim[0];
-       std::cout << "concat_dim = " << jcp.concat_dim << std::endl; 
-
-       /*jcp.mb_concat = jcp.mb;
-       jcp.oh_concat = jcp.oh;
-       jcp.ow_concat = jcp.ow;
-       jcp.oc_concat = jcp.oc * 2;*/
-
-       std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
-           dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
     }
 
     if (!implication(with_relu, relu_negative_slope == 0.))
@@ -634,7 +610,6 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
 
     assert(utils::implication(!jcp.is_oc_scale, oscales.mask_ == 0));
 
-    std::cout << "init_conf2-----------------" << std::endl;
     return status::success;
 }
 

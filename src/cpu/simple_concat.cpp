@@ -41,9 +41,6 @@ void simple_concat_t<data_type>::execute() {
         input_ptrs[a] = reinterpret_cast<const data_t *>(
                 this->input_memory(a)) + i_d.blk_off(0);
         output_ptrs[a] = o_base_ptr + o_d.blk_off(0);
-        int o_d_blk_off = o_d.blk_off(0);
-        std::cout << "o_d_blk_off" << o_d_blk_off  << std::endl;
-
         nelems_to_copy[a] = nelems_to_concat(concat_dim, perm, iperm, i_d);
         for (int i = 0; i < perm[concat_dim]; i++)
             is[a][i] = size_t(i_d.blocking_desc().strides[0][iperm[i]]);

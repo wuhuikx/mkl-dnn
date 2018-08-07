@@ -25,7 +25,6 @@
 #include "utils.hpp"
 #include "cpu_memory.hpp"
 #include "cpu_primitive.hpp"
-#include <iostream>
 
 namespace mkldnn {
 namespace impl {
@@ -118,9 +117,6 @@ protected:
             if (status != success) return status;
             src_image_pds_.push_back(*v_pd.dst_pd());
             current_concat_dim_offset += dim;
-            std::cout << "offset = " << offsets[concat_dim_];
-            std::cout << "current_concat_dim_offset = " << current_concat_dim_offset << std::endl;
-            std::cout << "dim = " << dim << std::endl;
         }
 
         return success;
