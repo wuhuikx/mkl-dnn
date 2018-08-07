@@ -17,7 +17,7 @@
 INST_TEST_CASE(SimpleSmall_Blocked16_padded,
     // non-1x1 (all)
     //PARAMS(nhwc, OIhw4i16o4i, FMT_BIAS, nhwc, 1, 1, 16, 7, 7, 16, 5, 5, 3, 3, 0, 0, 1, 1)
-    PARAMS(nhwc, OIhw4i16o4i,  FMT_BIAS, nhwc, 1, 1, 32, 7, 7, 64, 5, 5, 3, 3, 0, 0, 1, 1)
+    PARAMS(nhwc, OIhw4i16o4i,  FMT_BIAS, nhwc, 1, 1, 16, 3, 3, 16, 3, 3, 3, 3, 1, 1, 1, 1)
     //PARAMS(FMT_DATA_BLOCKED16, FMT_WEIGHTS_BLOCKED16, FMT_BIAS, FMT_DATA_BLOCKED16, 2, 1, 17, 13, 13, 23, 12, 12, 3, 3, 0, 0, 1, 1),
     //PARAMS(FMT_DATA_BLOCKED16, FMT_WEIGHTS_BLOCKED16, FMT_BIAS, FMT_DATA_BLOCKED16, 2, 1, 21, 13, 13, 16, 12, 12, 3, 3, 0, 0, 1, 1),
     //PARAMS(FMT_DATA_BLOCKED16, FMT_WEIGHTS_BLOCKED16, FMT_BIAS, FMT_DATA_BLOCKED16, 2, 1, 23, 13, 13, 19, 12, 12, 3, 3, 0, 0, 1, 1)

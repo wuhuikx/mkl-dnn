@@ -340,6 +340,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
     int acc_shift = jcp.typesize_acc *
                         (jcp.ur_w * jcp.oc_block * jcp.nb_oc_blocking);
 
+    std::cout << "---------generate1" << std::endl;
     preamble();
 
     xor_(reg_scratch, reg_scratch);
@@ -353,9 +354,10 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
     mov(reg_kh, ptr[param1 + GET_OFF(kh_padding)]);
     mov(reg_acc_s32, ptr[param1 + GET_OFF(acc_s32)]);
     
+    int concat_out_shift = 0;
     if (jcp.with_concat) {
        mov(reg_out_concat, ptr[param1 + GET_OFF(dst_concat)]);
-       out_shift = jcp.typesize_out *
+       concat_out_shift = jcp.typesize_out *
                         (jcp.ur_w * jcp.oc_concat * jcp.ngroups);
     }
     int r_pad = nstl::max(0, (jcp.ow - 1) * jcp.stride_w
@@ -374,7 +376,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
             compute_loop(jcp.ur_w, jcp.l_pad, r_pad1);
             add(reg_inp, inp_shift_pad);
             add(reg_out, out_shift);
-            add(reg_out_concat, out_shift);
+            add(reg_out_concat, concat_out_shift);
 
             add(reg_acc_s32, acc_shift);
             if (jcp.ur_w_tail != 0) {
@@ -385,7 +387,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                 compute_loop(jcp.ur_w, jcp.l_pad, 0);
                 add(reg_inp, inp_shift_pad);
                 add(reg_out, out_shift);
-                add(reg_out_concat, out_shift);
+                add(reg_out_concat, concat_out_shift);
                 add(reg_acc_s32, acc_shift);
 
                 inc(reg_oi);
@@ -398,7 +400,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                     compute_loop(jcp.ur_w, 0, 0);
                     add(reg_inp, inp_shift);
                     add(reg_out, out_shift);
-                    add(reg_out_concat, out_shift);
+                    add(reg_out_concat, concat_out_shift);
                     add(reg_acc_s32, acc_shift);
 
                     inc(reg_oi);
@@ -410,7 +412,7 @@ void jit_avx512_core_u8s8s32x_fwd_kernel::generate()
                 compute_loop(jcp.ur_w, 0, r_pad1);
                 add(reg_inp, inp_shift);
                 add(reg_out, out_shift);
-                add(reg_out_concat, out_shift);
+                add(reg_out_concat, concat_out_shift);
                 add(reg_acc_s32, acc_shift);
             }
             if (jcp.ur_w_tail != 0) {
@@ -466,7 +468,8 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
     const memory_desc_wrapper weights_d(&weights_pd);
     const memory_desc_wrapper dst_d(&dst_pd);
     const memory_desc_wrapper bias_d(&bias_pd);
-
+ 
+    std::cout << "init_conf1-----------------" << std::endl;
     const int regs = 28;
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
 
@@ -509,14 +512,14 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
        jcp.oh_concat = dst_concat_d.dims()[2];
        jcp.ow_concat = dst_concat_d.dims()[3];
        jcp.oc_concat = dst_concat_d.dims()[1] / jcp.ngroups;
-       jcp.concat_dim = 1;
+       jcp.concat_dim = 3;
        /*jcp.mb_concat = jcp.mb;
        jcp.oh_concat = jcp.oh;
        jcp.ow_concat = jcp.ow;
        jcp.oc_concat = jcp.oc * 2;*/
 
-       //std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
-       //    dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
+       std::cout << dst_concat_d.dims()[0] << "," << dst_concat_d.dims()[1] << "," <<
+           dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
     }
 
     if (!implication(with_relu, relu_negative_slope == 0.))
@@ -629,6 +632,7 @@ status_t jit_avx512_core_u8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
 
     assert(utils::implication(!jcp.is_oc_scale, oscales.mask_ == 0));
 
+    std::cout << "init_conf2-----------------" << std::endl;
     return status::success;
 }
 

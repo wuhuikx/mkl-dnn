@@ -160,10 +160,12 @@ protected:
                 create_md({}, data_type_dst, p.formats.bias_format);
         
         bool with_concat = true;
-        auto c_src_concat_desc = create_md({ cd.mb, cd.oc, cd.oh, cd.ow },
+        int mb_src = cd.mb, oc_src = cd.oc, oh_src = cd.oh, ow_src = 10;
+        auto c_src_concat_desc = create_md({ mb_src, oc_src, oh_src, ow_src },
                 data_type_dst, p.formats.dst_format);
 
-        int mb_concat = cd.mb, oc_concat = cd.oc*2, oh_concat = cd.oh, ow_concat = cd.ow;
+        int concat_dim = 3;
+        int mb_concat = cd.mb, oc_concat = cd.oc, oh_concat = cd.oh, ow_concat = cd.ow + ow_src;
         auto c_dst_concat_desc = create_md({ mb_concat, oc_concat, oh_concat, ow_concat },
                 data_type_dst, p.formats.dst_format);
 
@@ -235,7 +237,7 @@ protected:
         std::vector<memory> srcs{c_dst, c_src_concat};
         //std::vector<memory> srcs{src_memory1, src_memory2};
         
-        auto concat_pd = concat::primitive_desc(c_dst_concat_desc, 1, srcs_pd);
+        auto concat_pd = concat::primitive_desc(c_dst_concat_desc, concat_dim, srcs_pd);
         std::vector<primitive::at> inputs{srcs[0], srcs[1]};
         //auto dst_concat_res = memory(concat_pd.dst_primitive_desc());
         auto con = concat(concat_pd, inputs, c_dst_concat);
@@ -327,7 +329,7 @@ protected:
            pipeline_concat.push_back(conv_concat);
            auto s = stream(stream::kind::lazy);
            s.submit(pipeline_concat).wait();
-            
+           
            data_t_dst * dst_concat_fuse_ptr = (data_t_dst *)c_dst_concat_fuse.get_data_handle();
            for (int mb = 0; mb < mb_concat; ++mb) {
                 for (int oh = 0; oh < oh_concat; ++oh) {
@@ -344,7 +346,7 @@ protected:
                         }
                     }
                 }
-            } 
+            }
 
         } 
 

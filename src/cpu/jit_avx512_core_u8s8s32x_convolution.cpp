@@ -76,6 +76,7 @@ execute_forward()
     const memory_desc_wrapper weights_d(conf_.weights_pd(0));
     const memory_desc_wrapper bias_d(conf_.weights_pd(1));
     //memory_desc_wrapper(cdesc_().qusum_desc)
+    std::cout << "---------------------flag0-0" << std::endl;
     
     const size_t bia_dt_size = conf_.with_bias()
         ? types::data_type_size(conf_.cdesc()->bias_desc.data_type) : 0;
@@ -83,6 +84,7 @@ execute_forward()
     const auto &jcp = kernel_->jcp;
     assert(jcp.nb_oc % jcp.nb_oc_blocking == 0);
 
+    std::cout << "---------------------flag0-1" << std::endl;
     const auto &oscales = conf_.attr()->output_scales_;
 
     const dst_data_t *src_concat = dst;
@@ -97,6 +99,7 @@ execute_forward()
        //    dst_concat_d.dims()[2] << "," << dst_concat_d.dims()[3] << std::endl;
 
     }
+    std::cout << "---------------------flag0-2" << std::endl;
 
 #   pragma omp parallel
     {
@@ -120,10 +123,15 @@ execute_forward()
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
         size_t wht_ic_stride = wht_blk_off(weights_d, 0, 0, 1);
  
-        //if (jcp.with_concat) {
-        size_t dst_concat_h_stride = jcp.oh_concat * jcp.ow_concat * jcp.oc_concat;
-        //} 
-
+        size_t dst_concat_h_stride = 0;
+        if (jcp.with_concat) {
+            std::cout <<"h_stride = " << dst_d.blk_off(0, 0, 1) << std::endl;
+            const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
+            dst_concat_h_stride = dst_concat_d.blk_off(0, 0, 1);
+            //size_t dst_concat_h_stride = jcp.ow_concat * jcp.oc_concat;
+            std::cout << "dst_concat_h_stride=" << dst_concat_h_stride << std::endl;
+        }
+        
         int n{0}, gb{0}, occ{0}, oh_s{0};
         if (jcp.loop_order == loop_cgn)
             nd_iterator_init(start, occ, oc_chunks, gb, nb_groups, n, jcp.mb,
@@ -155,9 +163,12 @@ execute_forward()
             
             auto dst_w_concat = dst_w;
             if (jcp.with_concat) {
+               std::cout << "dst_d.blk_off(n, g_oc, oh_s) = " << dst_d.blk_off(n, g_oc, oh_s) << std::endl;
+               //dst_w = dst + dst_d.blk_off(n, g_oc, oh_s);
                size_t dst_concat_blk_off = n * jcp.oh_concat * jcp.ow_concat * jcp.oc_concat
                   + oh_s * jcp.ow_concat * jcp.oc_concat
-                  + g_oc; 
+                  + g_oc;
+               std::cout << "dst_concat_blk_off = " << dst_concat_blk_off << std::endl; 
                dst_w_concat = dst_concat + dst_concat_blk_off;
             }
 
@@ -171,6 +182,8 @@ execute_forward()
 
                 int icb = icc * jcp.nb_ic_blocking;
 
+                int count = 0;
+                std::cout << "--------------flag0-3" << std::endl;
                 for (int oj = oh_s, ij = ih_s;
                         oj < oh_e; ++oj, ij += jcp.stride_h)
                 {
@@ -190,24 +203,31 @@ execute_forward()
                     p.channel = icb;
                     p.kh_padding = kh_padding;
                     p.scales = scales;
+                    
+                    std::cout << "count = " << count++ << std::endl;
+                    std::cout << "--------------flag0-4" << std::endl;
+                    if (jcp.with_concat) {
+                       p.dst_concat = dst_c_concat;
+                       //std::cout << "dst_c_concat = " << *dst_c_concat << std::endl;
 
-                    //if (jcp.with_concat) {
-                    //p.dst_concat = dst_concat;
-                    p.dst_concat = dst_c_concat;
-                    //}
+                    }
+                    std::cout << "--------------flag0-5" << std::endl;
 
                     kernel_->jit_ker(&p);
+                    std::cout << "--------------flag0-6" << std::endl;
 
                     src_c += src_h_stride * jcp.stride_h;
                     dst_c += dst_h_stride;
                     ws_c += jcp.ow * jcp.oc_block * jcp.nb_oc_blocking;
-                    //if (jcp.with_concat) {
+                    if (jcp.with_concat) {
                        dst_c_concat += dst_concat_h_stride;
-                    //}
+                    }
+                    std::cout << "--------------flag0-7" << std::endl;
                 }
                 src_w += jcp.ic_block * jcp.nb_ic_blocking;
                 wht_w += wht_ic_stride * jcp.nb_ic_blocking;
             }
+            std::cout << "before_execute" << std::endl;
             if (jcp.loop_order == loop_cgn)
                 nd_iterator_jump(start, end, occ, oc_chunks, gb, nb_groups, n,
                         jcp.mb, oh_s, jcp.oh);
@@ -219,6 +239,7 @@ execute_forward()
                         oc_chunks, oh_s, jcp.oh);
             else
                 assert(!"unsupported loop order");
+            std::cout << "end_execute" << std::endl;
         }
     }
     /*
@@ -226,7 +247,8 @@ execute_forward()
     std::vector<int> dst_size = {jcp.mb, jcp.oh, jcp.ow, jcp.oc};
     print_func<dst_data_t>(dst, dst_size, "dst");
     */
-    
+   
+    std::cout << "--------------flag1---------------" << std::endl; 
     if (jcp.with_concat) {
        int num_arrs = 2;
        int max_num_arrs = 12;
@@ -236,20 +258,28 @@ execute_forward()
        strides_t is[max_num_arrs];
        int concat_dim = jcp.concat_dim;
        
+    std::cout << "--------------flag2---------------" << std::endl; 
        const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
        format_perm(dst_concat_d.ndims(), dst_concat_d.blocking_desc().strides[0], perm_,  iperm_);
        int *perm = perm_, *iperm = iperm_;
        std::cout << "perm = " << *perm << "," << *(perm +1) << "," << *(perm +2) << "," << *(perm +3) << std::endl;
+       std::cout << "iperm = " << *iperm << "," << *(iperm +1) << "," << *(iperm +2) << "," << *(iperm +3) << std::endl;
       
        int current_concat_dim_offset = 0;
-       for (int a = 0; a < num_arrs; ++a) {
+       for (int a = 1; a < num_arrs; ++a) {
             const memory_desc_wrapper i_d(conf_.cdesc()->src_concat_desc); 
             const memory_desc_wrapper o_d(conf_.cdesc()->dst_concat_desc);
            
             const int dim = i_d.dims()[concat_dim]; 
             //const int ndims = o_d.ndims();
 
-            int o_d_blk_off = current_concat_dim_offset;
+            //dst_d.dims() 
+            //for (int j = 0; j < perm[concat_dim]; ++j) {
+
+            //}
+            //int o_d_blk_off = current_concat_dim_offset;
+            int i = std::max(0, perm[concat_dim]-1);
+            int o_d_blk_off = size_t(dst_d.blocking_desc().strides[0][iperm[i]]);
             std::cout << "o_d_blk_off" << o_d_blk_off  << std::endl;
             //dims_t dims, offsets = {};
             //utils::array_copy(dims, dst_pd_.desc()->dims, ndims);
@@ -320,8 +350,8 @@ execute_forward()
        //     os[i] = o_d.blocking_desc().strides[0][iperm[i]];
 
        
-       std::vector<int> dst_concat_size = {jcp.mb, jcp.oh_concat, jcp.ow_concat, jcp.oc_concat};
-       print_func<dst_data_t>(dst_concat, dst_concat_size, "dst_concat");
+       //std::vector<int> dst_concat_size = {jcp.mb, jcp.oh_concat, jcp.ow_concat, jcp.oc_concat};
+       //print_func<dst_data_t>(dst_concat, dst_concat_size, "dst_concat");
     }
 }
 
