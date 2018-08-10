@@ -314,15 +314,18 @@ static void fill_data(const size_t size, data_t *data, double sparsity = 1.,
 template <typename data_t>
 static void compare_data(mkldnn::memory& ref, mkldnn::memory& dst)
 {
+    
+    std::cout << "----------flag0-----------"<<std::endl;
     using data_type = mkldnn::memory::data_type;
+    //ASSERT_TRUE(data_traits<data_t>::data_type == data_type::f32 ||
+    //        data_traits<data_t>::data_type == data_type::s32);
 
-    ASSERT_TRUE(data_traits<data_t>::data_type == data_type::f32 ||
-            data_traits<data_t>::data_type == data_type::s32);
-
+    std::cout << "----------flag1-----------"<<std::endl;
     /* Note: size_t incompatible with MSVC++ */
     auto ref_desc = ref.get_primitive_desc().desc();
     auto dst_desc = dst.get_primitive_desc().desc();
 
+    std::cout << "----------flag2-----------"<<std::endl;
     ASSERT_TRUE(ref_desc.data.ndims == dst_desc.data.ndims);
 
     auto ndims = ref_desc.data.ndims;
@@ -341,6 +344,7 @@ static void compare_data(mkldnn::memory& ref, mkldnn::memory& dst)
     data_t *ref_data = (data_t *)ref.get_data_handle();
     data_t *dst_data = (data_t *)dst.get_data_handle();
 
+    std::cout << "----------flag3-----------"<<std::endl;
 #   pragma omp parallel for schedule(static)
     for (ptrdiff_t i = 0; i < num; ++i) {
         data_t ref = ref_data[map_index(ref_desc, i)];
@@ -355,6 +359,7 @@ static void compare_data(mkldnn::memory& ref, mkldnn::memory& dst)
             EXPECT_EQ(ref, got) << "Index: " << i << " Total: " << num;
         }
     }
+    std::cout << "----------flag4-----------"<<std::endl;
 }
 
 inline const char *query_impl_info(const_mkldnn_primitive_desc_t pd) {

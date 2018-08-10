@@ -188,12 +188,13 @@ protected:
         /* c_dst_concat = c_dst + c_src_concat*/
 
         bool with_concat = true;
-        int concat_dim = 3; // concat_dim [0, 1, 2, 3] for [n, c, h, w]
+        int concat_dim = 1; // concat_dim [0, 1, 2, 3] for [n, c, h, w]
         int mb_src = cd.mb, oc_src = cd.oc, oh_src = cd.oh, ow_src = cd.ow; // for array1
         int mb_concat = cd.mb, oc_concat = cd.oc, oh_concat = cd.oh, ow_concat = cd.ow; // for concat result
        
         srand((unsigned)time(NULL));
         int rand_num = rand() % 100;  
+        rand_num = 16;
         switch(concat_dim){
             case 0: mb_src = rand_num; mb_concat += mb_src; break;
             case 1: oc_src = rand_num; oc_concat += oc_src; break;
@@ -234,6 +235,8 @@ protected:
                 (data_t_dst *)c_src_concat.get_data_handle());
         fill_data<data_t_dst>(c_dst_concat.get_primitive_desc().get_size()/ sizeof(data_t_dst),
                 (data_t_dst *)c_dst_concat.get_data_handle());
+        fill_data<data_t_dst>(c_dst_concat_fuse.get_primitive_desc().get_size()/ sizeof(data_t_dst),
+                (data_t_dst *)c_dst_concat_fuse.get_data_handle());
         
         check_zero_tail<data_t_src>(1, c_src.get());
         check_zero_tail<data_t_wei>(1, c_weights.get());
@@ -265,8 +268,10 @@ protected:
 
         auto mpd1 = c_dst.get_primitive_desc(); 
         auto mpd2 = c_src_concat.get_primitive_desc();
-        std::vector<memory::primitive_desc> srcs_pd{mpd1, mpd2};
-        std::vector<memory> srcs{c_dst, c_src_concat};
+        std::vector<memory::primitive_desc> srcs_pd{mpd2, mpd1};
+        std::vector<memory> srcs{c_src_concat, c_dst};
+        //std::vector<memory::primitive_desc> srcs_pd{mpd1, mpd2};
+        //std::vector<memory> srcs{c_dst, c_src_concat};
         
         auto concat_pd = concat::primitive_desc(c_dst_concat_desc, concat_dim, srcs_pd);
         std::vector<primitive::at> inputs{srcs[0], srcs[1]};
@@ -312,18 +317,19 @@ protected:
         std::vector<int> dst_size{cd.mb, cd.oh, cd.ow, cd.oc};
         data_t_dst * dst_ptr = (data_t_dst *)c_dst.get_data_handle();
         print_func<data_t_dst>(dst_ptr, dst_size, "array1");
-
+        */
         std::vector<int> src_concat_size{mb_src, oh_src, ow_src, oc_src};
         data_t_dst * src_concat_ptr = (data_t_dst *)c_src_concat.get_data_handle();
         print_func<data_t_dst>(src_concat_ptr, src_concat_size, "array2");
+        
 
         std::vector<int> dst_concat_size{mb_concat, oh_concat, ow_concat, oc_concat};
         data_t_dst * dst_concat_ptr = (data_t_dst *)c_dst_concat.get_data_handle();
         print_func<data_t_dst>(dst_concat_ptr, dst_concat_size, "non-fuse result");
-        */
+        
 
-        //data_t_dst * dst_concat_fuse_ptr = (data_t_dst *)c_dst_concat_fuse.get_data_handle();
-        //print_func<data_t_dst>(dst_concat_fuse_ptr, dst_concat_size, "fuse result");
+        data_t_dst * dst_concat_fuse_ptr = (data_t_dst *)c_dst_concat_fuse.get_data_handle();
+        print_func<data_t_dst>(dst_concat_fuse_ptr, dst_concat_size, "fuse result");
     }
 };
 

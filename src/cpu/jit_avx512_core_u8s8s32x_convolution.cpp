@@ -40,7 +40,7 @@ using jit_conv_ker_t = void (*)(jit_conv_call_s *);
          : (d).blk_off(__VA_ARGS__))
 
 template <typename data_t>
-void print_func(data_t *data_ptr, std::vector<int> c, std::string str){
+void print_func(const data_t *data_ptr, std::vector<int> c, std::string str){
      for (int mb = 0; mb < c[0]; ++mb) {
          for (int oh = 0; oh < c[1]; ++oh) {
              for (int ow = 0; ow < c[2]; ++ow) {
@@ -86,9 +86,37 @@ execute_forward()
 
     const dst_data_t *src_concat = dst;
     dst_data_t *dst_concat = dst;
+    dst_data_t *dst_concat_tmp = dst;
     if (jcp.with_concat) {
        src_concat = reinterpret_cast<const dst_data_t *>(this->input_memory(3));
        dst_concat = reinterpret_cast<dst_data_t *>(this->memory(1));
+       dst_concat_tmp = reinterpret_cast<dst_data_t *>(this->memory(1));
+       //dst_concat_tmp = dst_concat;
+
+       const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
+       format_perm(dst_concat_d.ndims(), dst_concat_d.blocking_desc().strides[0], perm_,  iperm_);
+       int *perm = perm_, *iperm = iperm_;
+            
+       const memory_desc_wrapper src_concat_d(conf_.cdesc()->src_concat_desc); 
+       int concat_dim = jcp.concat_dim;
+       int i = std::max(0, perm[concat_dim]-1);
+       int o_d_blk_off = size_t(src_concat_d.blocking_desc().strides[0][iperm[i]]); 
+       dst_concat = dst_concat + o_d_blk_off;
+
+       //std::vector<int> src_concat_size = {src_concat_d.dims()[0], src_concat_d.dims()[2], src_concat_d.dims()[1], src_concat_d.dims()[3]};
+       //print_func<dst_data_t>(src_concat, src_concat_size, "src_concat");
+      
+       //std::cout << "------ printf" << std::endl;
+       //int num = 0;
+       //for(int i=0; i<128; i++){
+       //   if(num == 16){
+       //      printf("\n");
+       //      num = 0;
+       //   }
+       //   printf("%d,", int(src_concat[i]));
+       //   num ++;
+                                    }
+       //   printf("\n"); 
     }
 
 #   pragma omp parallel
@@ -118,6 +146,7 @@ execute_forward()
             const memory_desc_wrapper dst_concat_d(conf_.cdesc()->dst_concat_desc);
             dst_concat_h_stride = dst_concat_d.blk_off(0, 0, 1);
             //size_t dst_concat_h_stride = jcp.ow_concat * jcp.oc_concat;
+       
         }
         
         int n{0}, gb{0}, occ{0}, oh_s{0};
@@ -148,7 +177,7 @@ execute_forward()
             auto dst_w = dst + dst_d.blk_off(n, g_oc, oh_s);
             auto src_w = src + src_d.blk_off(n, g_ic, ih_s);
             auto wht_w = weights + wht_blk_off(weights_d, gb, ocb, 0);
-            
+          
             auto dst_w_concat = dst_w;
             if (jcp.with_concat) {
                size_t dst_concat_blk_off = n * jcp.oh_concat * jcp.ow_concat * jcp.oc_concat
@@ -216,10 +245,10 @@ execute_forward()
                 assert(!"unsupported loop order");
         }
     }
-    /*
-    std::vector<int> dst_size = {jcp.mb, jcp.oh, jcp.ow, jcp.oc};
-    print_func<dst_data_t>(dst, dst_size, "dst");
-    */
+    
+    //std::vector<int> dst_size = {jcp.mb, jcp.oh, jcp.ow, jcp.oc};
+    //print_func<dst_data_t>(dst, dst_size, "dst");
+    
    
     if (jcp.with_concat) {
        int num_arrs = 2;
@@ -237,12 +266,13 @@ execute_forward()
        //int current_concat_dim_offset = 0;
        for (int a = 1; a < num_arrs; ++a) {
             const memory_desc_wrapper i_d(conf_.cdesc()->src_concat_desc); 
-            const memory_desc_wrapper o_d(conf_.cdesc()->dst_concat_desc);
+            //const memory_desc_wrapper o_d(conf_.cdesc()->dst_concat_desc);
            
-            int i = std::max(0, perm[concat_dim]-1);
-            int o_d_blk_off = size_t(dst_d.blocking_desc().strides[0][iperm[i]]);
+            //int i = std::max(0, perm[concat_dim]-1);
+            //int o_d_blk_off = size_t(dst_d.blocking_desc().strides[0][iperm[i]]);
             input_ptrs[a] =  src_concat + i_d.blk_off(0);
-            output_ptrs[a] = dst_concat + o_d_blk_off;
+            //output_ptrs[a] = dst_concat + o_d_blk_off;
+            output_ptrs[a] = dst_concat_tmp;
             nelems_to_copy[a] = nelems_to_concat(concat_dim, perm, iperm, i_d);
             for (int i = 0; i < perm[concat_dim]; i++) {
                  is[a][i] = size_t(i_d.blocking_desc().strides[0][iperm[i]]);
