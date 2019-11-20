@@ -1,14 +1,14 @@
 import math
 import openpyxl
 wb=openpyxl.load_workbook("test_file_conv3d.xlsx")
-f=open(r"../tests/benchdnn/inputs/conv/shape_conv3d_mkldnn","a+")
+f=open(r"../tests/benchdnn/inputs/conv/shape_conv3d_mkldnn","w")
 #wb=openpyxl.load_workbook("/home/huiwu1/workspace/int8/mkl-dnn/test_file_dw.xlsx")
 #f=open(r"shape_conv_dw","a+")
 
 ws=wb.active
 max_row = ws.max_row
 max_col = ws.max_column 
-for i in range(2,max_row):
+for i in range(1,max_row+1):
     #for j in range(max_col):
     mb = ws.cell(row=i, column=1).value
     ic = ws.cell(row=i, column=2).value
@@ -73,7 +73,7 @@ for i in range(2,max_row):
         "_od" + str(ot) + "oh" + str(oh) + "ow" + str(ow) + \
         "_sd" + str(stride_t) + "sh" + str(stride_h) + "sw" + str(stride_w) + \
         "_pd" + str(pad_prev) + "ph" + str(pad_h_top) + "pw" + str(pad_w_left) + \
-        "_dd" + str(d_t) + "dh" + str(d_h) + "dw" + str(d_w) + \
+        "_dd" + str((d_t-1)) + "dh" + str((d_h-1)) + "dw" + str((d_w-1)) + \
         "n"
 
     f.writelines(newline+"\n")

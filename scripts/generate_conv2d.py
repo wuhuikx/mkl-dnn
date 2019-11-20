@@ -5,12 +5,12 @@ import openpyxl
 #wb=openpyxl.load_workbook("/home/huiwu1/workspace/int8/mkl-dnn/test_file_dw.xlsx")
 #f=open(r"shape_dw_mkldnn","a+")
 wb=openpyxl.load_workbook("./test_file_conv2d.xlsx")
-f=open(r"../tests/benchdnn/inputs/conv/shape_conv2d_mkldnn","a+")
+f=open(r"../tests/benchdnn/inputs/conv/shape_conv2d_mkldnn","w")
 
 ws=wb.active
 max_row = ws.max_row
 max_col = ws.max_column 
-for i in range(2,max_row):
+for i in range(1,max_row+1):
     #for j in range(max_col):
     mb = ws.cell(row=i, column=1).value
     ic = ws.cell(row=i, column=2).value
@@ -41,9 +41,9 @@ for i in range(2,max_row):
     if not pad_w_right:
         pad_w_right = 0
     if not d_h:
-        d_h = 0
+        d_h = 1
     if not d_w:
-        d_w = 0
+        d_w = 1
 
     kh_extent = d_h * (kh - 1) + 1
     kw_extent = d_w * (kw - 1) + 1
@@ -56,7 +56,7 @@ for i in range(2,max_row):
 	"kh" + str(kh) + "kw" + str(kw) + \
 	"sh" + str(stride_h) + "sw" + str(stride_w) + \
 	"ph" + str(pad_h_top) + "pw" + str(pad_w_left) + \
-	"dh" + str(d_h) + "dw" + str(d_w) + \
+	"dh" + str(d_h-1) + "dw" + str(d_w-1) + \
 	"n"
     
     f.writelines(newline+"\n")
