@@ -78,14 +78,26 @@ inline bool should_stop(const benchdnn_timer_t &t) {
 
 inline int measure_perf_individual(benchdnn_timer_t &t, dnnl_primitive_t prim,
         std::vector<dnnl_exec_arg_t> &dnnl_args) {
+    bool flush = true;
+    std::vector<char> llc;
+    if (flush) {
+        llc.resize(64L * 1024L * 1024L, 1.0);
+    }
     t.reset();
     while (true) {
+        if (flush) {
+            for (size_t i = 0; i < llc.size(); i++) {
+                llc[i]++;
+            }
+            t.start();
+        }
         DNN_SAFE(dnnl_primitive_execute(prim, stream_tgt, (int)dnnl_args.size(),
                          dnnl_args.data()),
                 WARN);
         t.stamp();
         if (should_stop(t)) break;
     }
+    ((volatile char *)(llc.data()));
     return OK;
 }
 
@@ -105,7 +117,18 @@ inline int measure_perf_aggregate(benchdnn_timer_t &t, dnnl_primitive_t prim,
             = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
     --cur_batch_times;
 
+    /*bool flush = true;
+    std::vector<char> llc;
+    if (flush) {
+        llc.resize(64L * 1024L * 1024L, 1.0);
+    }*/
     while (true) {
+        /*if (flush) {
+            for (size_t i = 0; i < llc.size(); i++) {
+                llc[i]++;
+            }
+            t.start();
+        }*/
         for (int i = 0; i < cur_batch_times; i++) {
             DNN_SAFE(dnnl_primitive_execute(prim, stream_tgt,
                              (int)dnnl_args.size(), dnnl_args.data()),
@@ -128,11 +151,13 @@ inline int measure_perf_aggregate(benchdnn_timer_t &t, dnnl_primitive_t prim,
             cur_batch_times = MIN2(max_batch_times, batch_times_heuristic);
         }
     }
+    //((volatile char *)(llc.data()));
     return OK;
 }
 
 int measure_perf(benchdnn_timer_t &t, dnnl_primitive_t prim, args_t &args) {
     int ret = OK;
+
     if (bench_mode & PERF) {
         std::vector<dnnl_exec_arg_t> dnnl_args;
         execute_unmap_args(args, dnnl_args);
