@@ -117,18 +117,18 @@ inline int measure_perf_aggregate(benchdnn_timer_t &t, dnnl_primitive_t prim,
             = fix_times_per_prb ? fix_times_per_prb : min_times_per_prb;
     --cur_batch_times;
 
-    /*bool flush = true;
+    bool flush = true;
     std::vector<char> llc;
     if (flush) {
         llc.resize(64L * 1024L * 1024L, 1.0);
-    }*/
+    }
     while (true) {
-        /*if (flush) {
+        if (flush) {
             for (size_t i = 0; i < llc.size(); i++) {
                 llc[i]++;
             }
             t.start();
-        }*/
+        }
         for (int i = 0; i < cur_batch_times; i++) {
             DNN_SAFE(dnnl_primitive_execute(prim, stream_tgt,
                              (int)dnnl_args.size(), dnnl_args.data()),
